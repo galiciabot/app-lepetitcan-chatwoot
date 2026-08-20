@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Represents an active or pending grooming appointment reserved by clients.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the appointment" },
+        "time": { "type": "string", "description": "Formatted time display (e.g. 09:30)" },
+        "period": { "type": "string", "enum": ["AM", "PM"] },
+        "dogName": { "type": "string", "description": "Name of the dog being groomed" },
+        "breed": { "type": "string", "description": "Dog breed name" },
+        "size": { "type": "string", "enum": ["Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"] },
+        "ownerName": { "type": "string", "description": "First and last name of the pet owner" },
+        "service": { "type": "string", "description": "Type of service requested" },
+        "status": { "type": "string", "enum": ["Confirmado", "En camino", "Pendiente", "Confirmada", "En Camino"] },
+        "rawTime": { "type": "string", "description": "Raw 24h formatted time string" }
+      },
+      "required": ["id", "time", "dogName", "breed", "size", "ownerName", "service", "status"]
+    },
+    "ChatThread": {
+      "title": "ChatThread",
+      "description": "A conversation channel thread between a customer and the Salon staff.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "dogName": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "channel": { "type": "string", "enum": ["WhatsApp", "Instagram", "Facebook", "Web"] },
+        "avatarUrl": { "type": "string" },
+        "lastMessageText": { "type": "string" },
+        "lastMessageTime": { "type": "string" },
+        "unread": { "type": "boolean" },
+        "resolved": { "type": "boolean" },
+        "messages": { "type": "array" }
+      },
+      "required": ["id", "dogName", "ownerName", "channel", "messages", "resolved"]
+    },
+    "ActiveBreak": {
+      "title": "ActiveBreak",
+      "description": "Break hours allocated for veterinarians and groomers during the day.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "timeRange": { "type": "string" },
+        "days": { "type": "string" },
+        "icon": { "type": "string" }
+      },
+      "required": ["id", "title", "timeRange", "days"]
+    }
+  },
+  "firestore": {
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Individual customer salon appointments"
+    },
+    "/chat_threads/{threadId}": {
+      "schema": "ChatThread",
+      "description": "Interactive support and booking chats"
+    },
+    "/active_breaks/{breakId}": {
+      "schema": "ActiveBreak",
+      "description": "Allocated personal off-work sequences"
+    }
+  }
+}

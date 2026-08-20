@@ -1,0 +1,6 @@
+{
+  "name": "Le Petit Can",
+  "description": "Boutique Pet Care Atelier management application with highly atmospheric design inspired from Stitch layouts",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
