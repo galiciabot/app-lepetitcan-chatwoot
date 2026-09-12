@@ -1744,9 +1744,9 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     try {
       const cached = localStorage.getItem("le_petit_can_appointments");
-      return cached ? JSON.parse(cached) : INITIAL_DEMO_APPOINTMENTS;
+      return cached ? JSON.parse(cached) : [];
     } catch {
-      return INITIAL_DEMO_APPOINTMENTS;
+      return [];
     }
   });
 
@@ -1769,9 +1769,9 @@ export default function App() {
   const [owners, setOwners] = useState<Owner[]>(() => {
     try {
       const cached = localStorage.getItem("le_petit_can_owners");
-      return cached ? JSON.parse(cached) : INITIAL_DEMO_OWNERS;
+      return cached ? JSON.parse(cached) : [];
     } catch {
-      return INITIAL_DEMO_OWNERS;
+      return [];
     }
   });
 
