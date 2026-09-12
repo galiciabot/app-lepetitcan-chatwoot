@@ -305,11 +305,9 @@ export function ClientDetailView({
     }
   ];
 
-  const ACTUAL_OWNERS = (owners && owners.length > 0) ? owners : FALLBACK_OWNERS;
-
-  // Selected client/pet indexing
-  const [selectedOwnerId, setSelectedOwnerId] = useState<string>(() => initialOwnerId || ACTUAL_OWNERS[0]?.id || "o1");
-  const [selectedPetId, setSelectedPetId] = useState<string>(() => initialPetId || ACTUAL_OWNERS[0]?.pets?.[0]?.id || "p1_1");
+  const ACTUAL_OWNERS = owners || [];
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>(() => initialOwnerId || ACTUAL_OWNERS[0]?.id || "");
+  const [selectedPetId, setSelectedPetId] = useState<string>(() => initialPetId || ACTUAL_OWNERS[0]?.pets?.[0]?.id || "");
 
   // Keep selected state in sync with props changes (e.g. from appointment click)
   useEffect(() => {
