@@ -6,8 +6,8 @@ export interface ChatwootConfig {
   appSecret: string;
 }
 
-const BASE = "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
-const APP_SECRET = "HW9EASIns89jsd63nkjasA67";
+const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
+const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
 
 function getConfig(): ChatwootConfig {
   try {
