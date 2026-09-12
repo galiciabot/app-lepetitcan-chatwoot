@@ -1633,6 +1633,18 @@ export default function App() {
     }
   });
 
+  // Clear old demo data from localStorage on first load with this version
+  useEffect(() => {
+    const version = localStorage.getItem("le_petit_can_version");
+    if (version !== "2") {
+      localStorage.removeItem("le_petit_can_owners");
+      localStorage.removeItem("le_petit_can_appointments");
+      localStorage.removeItem("le_petit_can_services");
+      localStorage.removeItem("le_petit_can_products");
+      localStorage.setItem("le_petit_can_version", "2");
+    }
+  }, []);
+
   // SaaS Remote Suspend state persistent via localStorage
   const [isSuspended, setIsSuspended] = useState<boolean>(() => {
     return localStorage.getItem("le_petit_can_suspended") === "true";
