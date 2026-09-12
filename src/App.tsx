@@ -1715,22 +1715,26 @@ export default function App() {
   useEffect(() => {
     async function loadFromOdoo() {
       try {
-        const [contacts, appts] = await Promise.all([
-          odooService.getContacts(),
-          odooService.getAppointments(),
-        ]);
+        const contacts = await odooService.getContacts();
+        console.log("[Odoo] Contacts loaded:", contacts?.length, "items");
         if (contacts?.length) {
           const owners = contacts.map(odooService.partnerToOwner);
           setOwners(owners);
           localStorage.setItem("le_petit_can_owners", JSON.stringify(owners));
         }
+      } catch (err) {
+        console.warn("[Odoo] Contacts load failed:", err);
+      }
+      try {
+        const appts = await odooService.getAppointments();
+        console.log("[Odoo] Appointments loaded:", appts?.length, "items");
         if (appts?.length) {
           const appointments = appts.map(odooService.appointmentToAppointment);
           setAppointments(appointments);
           localStorage.setItem("le_petit_can_appointments", JSON.stringify(appointments));
         }
       } catch (err) {
-        console.warn("[App] Could not load from Odoo, using localStorage:", err);
+        console.warn("[Odoo] Appointments load failed:", err);
       }
     }
     loadFromOdoo();

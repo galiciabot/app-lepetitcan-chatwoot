@@ -15,7 +15,9 @@ async function get<T>(path: string): Promise<T> {
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   const data = await res.json();
   if (Array.isArray(data)) return data as T;
-  return (data as any).data || data;
+  if (data && Array.isArray(data.data)) return data.data as T;
+  if (data && typeof data === "object" && data.id) return [data] as T;
+  return data as T;
 }
 
 async function post<T>(path: string, body: any): Promise<T> {
