@@ -1,5 +1,3 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import * as metaWhatsAppService from "../services/metaWhatsAppService";
 import * as metaMessengerService from "../services/metaMessengerService";
 import * as metaInstagramService from "../services/metaInstagramService";
@@ -157,28 +155,24 @@ export function simulateInstagramIncomingMessage(senderId: string, text: string)
 
 export async function triggerN8NWebhook(eventType: "booking" | "completed" | "note_added", data: any) {
   try {
-    const docRef = doc(db, "configs", "integrations");
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return;
-    
-    const config = snap.data();
+    const saved = localStorage.getItem("integration_config");
+    if (!saved) return;
+    const config = JSON.parse(saved);
     if (!config.n8nWebhookUrl) return;
-    
-    // Check if trigger is enabled
+
     if (eventType === "booking" && !config.n8nOnBooking) return;
     if (eventType === "completed" && !config.n8nOnCompleted) return;
     if (eventType === "note_added" && !config.n8nOnNoteAdded) return;
-    
+
     const payload = {
       event: eventType,
       timestamp: new Date().toISOString(),
       source: "Le Petit Can Client App",
       data
     };
-    
+
     console.log(`[Webhook Trigger] Sending ${eventType} event to: ${config.n8nWebhookUrl}`);
-    
-    // Silent call to avoid blocking user flow
+
     fetch(config.n8nWebhookUrl, {
       method: "POST",
       headers: {
@@ -198,15 +192,13 @@ export async function triggerN8NWebhook(eventType: "booking" | "completed" | "no
 
 export async function triggerHioposTicketSync(ticketData: any) {
   try {
-    const docRef = doc(db, "configs", "integrations");
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return;
-    
-    const config = snap.data();
+    const saved = localStorage.getItem("integration_config");
+    if (!saved) return;
+    const config = JSON.parse(saved);
     if (!config.hioposApiUrl || !config.hioposSyncOnCheckout) return;
-    
+
     console.log(`[Hiopos Trigger] Syncing ticket to: ${config.hioposApiUrl}`);
-    
+
     fetch(`${config.hioposApiUrl}/tickets`, {
       method: "POST",
       headers: {

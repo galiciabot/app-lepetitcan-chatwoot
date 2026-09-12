@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 import { Appointment, Service } from "../types";
-import { db, handleFirestoreError, OperationType } from "../firebase";
-import { doc, setDoc } from "firebase/firestore";
 import { lookupZoneByZip } from "./ClientDetailView";
 
 export const SPANISH_DOG_BREEDS = [
@@ -320,9 +318,10 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
     };
 
     try {
-      // Connects with Firebase Firestore directly using document path setup
-      const path = `appointments/${generatedId}`;
-      await setDoc(doc(db, "appointments", generatedId), newAppointment);
+      // Save to localStorage
+      const existing = JSON.parse(localStorage.getItem("le_petit_can_appointments") || "[]");
+      existing.push(newAppointment);
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(existing));
 
       // Confirm success state
       setCreatedReceipt(newAppointment);
@@ -360,13 +359,8 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
         onAppointmentCreated(newAppointment);
       }
     } catch (err) {
-      console.error("Failed to persist booking to Firestore", err);
-      try {
-        handleFirestoreError(err, OperationType.CREATE, `appointments/${generatedId}`);
-      } catch (formattedError: any) {
-        // Fallback or show precise validation error
-        setErrorMsg(`Error de conexión con la base de datos de Le Petit Can. El servicio se registró localmente. Detalle: ${formattedError.message}`);
-      }
+      console.error("Failed to save booking locally", err);
+      setErrorMsg("Error al guardar la reserva. Inténtalo de nuevo.");
     } finally {
       setIsSubmitting(false);
     }

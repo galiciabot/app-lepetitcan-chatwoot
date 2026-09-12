@@ -14,7 +14,6 @@ import { BreakConfigView } from "./components/BreakConfigView";
 import { HandoffPanel } from "./components/HandoffPanel";
 import { BookingWidget } from "./components/BookingWidget";
 import { AdminManagementView } from "./components/AdminManagementView";
-import { OmnichannelIntegrationView } from "./views/OmnichannelIntegrationView";
 
 // Auth & SaaS Lock gate components
 import { LoginView } from "./components/LoginView";
@@ -22,9 +21,9 @@ import { SuspendedView } from "./components/SuspendedView";
 import { SaaSPaymentControl } from "./components/SaaSPaymentControl";
 import { SecurityLopdView } from "./components/SecurityLopdView";
 
-// Firebase imports integration
-import { collection, onSnapshot, doc, setDoc, getDocs, deleteDoc, getDoc } from "firebase/firestore";
-import { db } from "./firebase";
+// Firebase imports — only Auth, no Firestore
+import { auth, googleSignIn, logoutGoogle, initAuth } from "./firebase";
+import * as odooService from "./services/odooService";
 
 // Initial High-Fidelity Data for database seeding
 const INITIAL_DEMO_APPOINTMENTS: Appointment[] = [
@@ -1711,141 +1710,46 @@ export default function App() {
   };
 
 
-  // One-time database seeding check
+  // All data is stored locally via localStorage.
+  // On mount, try to load fresh data from Odoo via n8n.
   useEffect(() => {
-    async function seedDatabaseIfEmpty() {
+    async function loadFromOdoo() {
       try {
-        const metadataDocRef = doc(db, "metadata", "seeding_completed");
-        const metadataSnap = await getDoc(metadataDocRef);
-        
-        if (!metadataSnap.exists()) {
-          console.log("[Seeding] No seeding metadata found. Performing first-time database seeding...");
-          
-          // Seed appointments
-          const apptsSnap = await getDocs(collection(db, "appointments"));
-          if (apptsSnap.empty) {
-            for (const item of INITIAL_DEMO_APPOINTMENTS) {
-              await setDoc(doc(db, "appointments", item.id), item);
-            }
-          }
-          
-          // Seed services
-          const srvsSnap = await getDocs(collection(db, "services"));
-          if (srvsSnap.empty) {
-            for (const item of INITIAL_DEMO_SERVICES) {
-              await setDoc(doc(db, "services", item.id), item);
-            }
-          }
-          
-          // Seed products
-          const prodsSnap = await getDocs(collection(db, "products"));
-          if (prodsSnap.empty) {
-            for (const item of INITIAL_DEMO_PRODUCTS) {
-              await setDoc(doc(db, "products", item.id), item);
-            }
-          }
-          
-          // Seed owners
-          const ownersSnap = await getDocs(collection(db, "owners"));
-          if (ownersSnap.empty) {
-            for (const item of INITIAL_DEMO_OWNERS) {
-              await setDoc(doc(db, "owners", item.id), item);
-            }
-          }
-          
-          // Save completion flag
-          await setDoc(metadataDocRef, { seededAt: new Date().toISOString() });
-          console.log("[Seeding] First-time database seeding successfully completed!");
-        } else {
-          console.log("[Seeding] Database already seeded. Skipping auto-restore routines to keep user changes intact.");
+        const [contacts, appts] = await Promise.all([
+          odooService.getContacts(),
+          odooService.getAppointments(),
+        ]);
+        if (contacts?.length) {
+          const owners = contacts.map(odooService.partnerToOwner);
+          setOwners(owners);
+          localStorage.setItem("le_petit_can_owners", JSON.stringify(owners));
+        }
+        if (appts?.length) {
+          const appointments = appts.map(odooService.appointmentToAppointment);
+          setAppointments(appointments);
+          localStorage.setItem("le_petit_can_appointments", JSON.stringify(appointments));
         }
       } catch (err) {
-        console.warn("[Seeding] Optional seeding/indexing flow deferred or read restriction applied:", err);
+        console.warn("[App] Could not load from Odoo, using localStorage:", err);
       }
     }
-    seedDatabaseIfEmpty();
+    loadFromOdoo();
   }, []);
 
-  // Synchronise services with accurate 7 BookingWidget services if there is any mismatch/old services
-  useEffect(() => {
-    async function alignServicesWithDefaults() {
-      try {
-        const servicesColl = collection(db, "services");
-        const srvsSnap = await getDocs(servicesColl);
-        
-        let hasSpam = false;
-        const currentServiceIds = new Set<string>();
-        srvsSnap.forEach((doc) => {
-          currentServiceIds.add(doc.id);
-          if (["ozonoterapia", "corte_cachorros", "mant_express", "olor_out", "barro_mud"].includes(doc.id)) {
-            hasSpam = true;
-          }
-        });
+  // Real-time state synchronized via localStorage (cache).
+  // When n8n/Odoo endpoints are ready, these will be fetched from there.
 
-        // If the database has old services OR is missing critical ones of the 7, let's sync
-        const defaultIds = ["baño", "baño_arreglo", "corte_mixto", "corte_tijera", "strippin", "deslanado", "uñas"];
-        const isMissingDefault = defaultIds.some(id => !currentServiceIds.has(id));
-
-        if (hasSpam || isMissingDefault || srvsSnap.empty) {
-          console.log("[Seeding] Aligning services to match exactly the 7 beautiful booking services...");
-          
-          // Delete old/unsupported default services
-          const oldIds = ["ozonoterapia", "corte_cachorros", "mant_express", "olor_out", "barro_mud"];
-          for (const oldId of oldIds) {
-            if (currentServiceIds.has(oldId)) {
-              await deleteDoc(doc(db, "services", oldId));
-            }
-          }
-
-          // Force set the exact 7 services
-          for (const srv of INITIAL_DEMO_SERVICES) {
-            await setDoc(doc(db, "services", srv.id), srv);
-          }
-          console.log("[Seeding] Services successfully realigned with Booking form!");
-        }
-      } catch (err) {
-        console.warn("[Seeding] Optional compliance alignment deferred:", err);
-      }
+  // Local state initialized with demo data and cached in localStorage.
+  // When Odoo via n8n is ready, these will be fetched from the API.
+  const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    try {
+      const cached = localStorage.getItem("le_petit_can_appointments");
+      return cached ? JSON.parse(cached) : INITIAL_DEMO_APPOINTMENTS;
+    } catch {
+      return INITIAL_DEMO_APPOINTMENTS;
     }
-    alignServicesWithDefaults();
-  }, []);
+  });
 
-  // Real-time Firestore synchronized State (hydrated safely to local cache on startup)
-  const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_DEMO_APPOINTMENTS);
-
-  // Firestore Real-Time Sync hook
-  useEffect(() => {
-    const appointmentsCollection = collection(db, "appointments");
-
-    const unsub = onSnapshot(
-      appointmentsCollection,
-      async (snapshot) => {
-        const list: Appointment[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as Appointment;
-          list.push(data);
-        });
-
-        // Order appropriately by date first, then by hour slot
-        list.sort((a, b) => {
-          const dateA = a.date || "2026-06-20";
-          const dateB = b.date || "2026-06-20";
-          if (dateA !== dateB) {
-            return dateA.localeCompare(dateB);
-          }
-          return a.time.localeCompare(b.time);
-        });
-        setAppointments(list);
-      },
-      (err) => {
-        console.warn("Firestore connection or read rules warning: running with local cached state.", err);
-      }
-    );
-
-    return () => unsub();
-  }, []);
-
-  // Real-time Firestore synchronized states for administrative elements
   const [services, setServices] = useState<Service[]>(() => {
     try {
       const cached = localStorage.getItem("le_petit_can_services");
@@ -1871,73 +1775,7 @@ export default function App() {
     }
   });
 
-  // Services Real-Time Sync hook
-  useEffect(() => {
-    const servicesCollection = collection(db, "services");
-    const unsub = onSnapshot(
-      servicesCollection,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: Service[] = [];
-          snapshot.forEach((docSnap) => {
-            list.push(docSnap.data() as Service);
-          });
-          setServices(list);
-          localStorage.setItem("le_petit_can_services", JSON.stringify(list));
-        }
-      },
-      (err) => {
-        console.warn("Firestore services warning, using local state:", err);
-      }
-    );
-    return () => unsub();
-  }, []);
-
-  // Products Real-Time Sync hook
-  useEffect(() => {
-    const productsCollection = collection(db, "products");
-    const unsub = onSnapshot(
-      productsCollection,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: Product[] = [];
-          snapshot.forEach((docSnap) => {
-            list.push(docSnap.data() as Product);
-          });
-          setProducts(list);
-          localStorage.setItem("le_petit_can_products", JSON.stringify(list));
-        }
-      },
-      (err) => {
-        console.warn("Firestore products warning, using local state:", err);
-      }
-    );
-    return () => unsub();
-  }, []);
-
-  // Owners & Pets Real-Time Sync hook
-  useEffect(() => {
-    const ownersCollection = collection(db, "owners");
-    const unsub = onSnapshot(
-      ownersCollection,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: Owner[] = [];
-          snapshot.forEach((docSnap) => {
-            list.push(docSnap.data() as Owner);
-          });
-          setOwners(list);
-          localStorage.setItem("le_petit_can_owners", JSON.stringify(list));
-        }
-      },
-      (err) => {
-        console.warn("Firestore owners warning, using local state:", err);
-      }
-    );
-    return () => unsub();
-  }, []);
-
-  // Administrative action handlers with durable Firebase syncing
+  // Administrative action handlers with localStorage persistence
   const handleSaveService = async (srv: Service) => {
     setServices((prev) => {
       const copy = [...prev];
@@ -1950,12 +1788,6 @@ export default function App() {
       localStorage.setItem("le_petit_can_services", JSON.stringify(copy));
       return copy;
     });
-
-    try {
-      await setDoc(doc(db, "services", srv.id), srv);
-    } catch (err) {
-      console.error("Firestore save service failed:", err);
-    }
   };
 
   const handleDeleteService = async (id: string) => {
@@ -1964,29 +1796,13 @@ export default function App() {
       localStorage.setItem("le_petit_can_services", JSON.stringify(copy));
       return copy;
     });
-
-    try {
-      await deleteDoc(doc(db, "services", id));
-    } catch (err) {
-      console.error("Firestore delete service failed:", err);
-    }
   };
 
   const handleResetServicesToDefault = async () => {
-    try {
-      if (window.confirm("¿Estás seguro de que deseas restablecer todos los servicios a los 7 modelos estándar de Le Petit Can? Se sobreescribirán las modificaciones de estos 7 servicios.")) {
-        setServices(INITIAL_DEMO_SERVICES);
-        localStorage.setItem("le_petit_can_services", JSON.stringify(INITIAL_DEMO_SERVICES));
-        
-        // Populating the exact 7 default services
-        for (const srv of INITIAL_DEMO_SERVICES) {
-          await setDoc(doc(db, "services", srv.id), srv);
-        }
-        alert("¡Tarifas y servicios originales restablecidos con éxito!");
-      }
-    } catch (err) {
-      console.error("Error resetting services:", err);
-      alert("Hubo un error al restablecer los servicios (el cambio local se ha guardado de igual manera).");
+    if (window.confirm("¿Estás seguro de que deseas restablecer todos los servicios a los 7 modelos estándar de Le Petit Can? Se sobreescribirán las modificaciones de estos 7 servicios.")) {
+      setServices(INITIAL_DEMO_SERVICES);
+      localStorage.setItem("le_petit_can_services", JSON.stringify(INITIAL_DEMO_SERVICES));
+      alert("¡Tarifas y servicios originales restablecidos con éxito!");
     }
   };
 
@@ -2002,12 +1818,6 @@ export default function App() {
       localStorage.setItem("le_petit_can_products", JSON.stringify(copy));
       return copy;
     });
-
-    try {
-      await setDoc(doc(db, "products", prod.id), prod);
-    } catch (err) {
-      console.error("Firestore save product failed:", err);
-    }
   };
 
   const handleDeleteProduct = async (id: string) => {
@@ -2016,12 +1826,6 @@ export default function App() {
       localStorage.setItem("le_petit_can_products", JSON.stringify(copy));
       return copy;
     });
-
-    try {
-      await deleteDoc(doc(db, "products", id));
-    } catch (err) {
-      console.error("Firestore delete product failed:", err);
-    }
   };
 
   const handleSaveOwner = async (owner: Owner) => {
@@ -2036,11 +1840,16 @@ export default function App() {
       localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
       return copy;
     });
-
     try {
-      await setDoc(doc(db, "owners", owner.id), owner);
+      await odooService.createContact({
+        name: owner.name,
+        email: owner.contact || undefined,
+        phone: owner.phone || undefined,
+        city: owner.city || undefined,
+        zip: owner.zipCode || undefined,
+      });
     } catch (err) {
-      console.error("Firestore save owner failed:", err);
+      console.warn("[App] Odoo save failed (local save ok):", err);
     }
   };
 
@@ -2050,12 +1859,6 @@ export default function App() {
       localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
       return copy;
     });
-
-    try {
-      await deleteDoc(doc(db, "owners", id));
-    } catch (err) {
-      console.error("Firestore delete owner failed:", err);
-    }
   };
 
   // Selected owner/pet focus context states for ClientDetailView
@@ -2087,53 +1890,13 @@ export default function App() {
   };
 
   const handleUpdateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
-    try {
-      // 1. Update in dynamic global appointments list
-      const appt = appointments.find((a) => a.id === appointmentId);
-      if (appt) {
-        const updated = { ...appt, status: newStatus };
-        await setDoc(doc(db, "appointments", appointmentId), updated);
-      }
-      
-      // 2. Also search and update in the owner's pets' nested history
-      let ownerToUpdate: Owner | null = null;
-      let petToUpdate: any = null;
-      let historyToUpdateIdx = -1;
-
-      for (const owner of owners) {
-        if (owner.pets) {
-          for (const pet of owner.pets) {
-            const idx = pet.history ? pet.history.findIndex((h) => h.id === appointmentId) : -1;
-            if (idx !== -1) {
-              ownerToUpdate = owner;
-              petToUpdate = pet;
-              historyToUpdateIdx = idx;
-              break;
-            }
-          }
-        }
-        if (ownerToUpdate) break;
-      }
-
-      if (ownerToUpdate && petToUpdate && historyToUpdateIdx !== -1) {
-        const updatedHistory = petToUpdate.history.map((h: any, i: number) => {
-          if (i === historyToUpdateIdx) {
-            return { ...h, status: newStatus };
-          }
-          return h;
-        });
-        const updatedPets = ownerToUpdate.pets.map((p) => {
-          if (p.id === petToUpdate.id) {
-            return { ...p, history: updatedHistory };
-          }
-          return p;
-        });
-        const updatedOwner = { ...ownerToUpdate, pets: updatedPets };
-        await setDoc(doc(db, "owners", ownerToUpdate.id), updatedOwner);
-      }
-    } catch (err) {
-      console.error("Firestore update appointment status failed:", err);
-    }
+    setAppointments((prev) => {
+      const updated = prev.map((a) =>
+        a.id === appointmentId ? { ...a, status: newStatus } : a
+      );
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
+      return updated;
+    });
   };
 
 
@@ -2251,26 +2014,41 @@ export default function App() {
   };
 
   const handleNewAppointmentSuccess = async (draft: AppointmentDraft) => {
-    // Write manual staff appointments directly to Firestore to keep data synchronized
     const generatedId = `a_${Date.now()}`;
+    const now = new Date();
+    const startStr = `${now.toISOString().slice(0, 10)}T17:30:00`;
+    const endStr = `${now.toISOString().slice(0, 10)}T19:00:00`;
+
     const newApp: Appointment = {
       id: generatedId,
       dogName: "Compañero",
       breed: "Sin Registrar",
-      size: "Pequeño", // Default maps to small dog size safely, can be adjusted
+      size: "Pequeño",
       ownerName: "Cliente Nuevo",
       service: `Grooming Estilo (${draft.duration})`,
       status: "Pendiente",
       period: "PM",
       time: "17:30",
       rawTime: "17:30",
-      date: "2026-06-20",
+      date: now.toISOString().slice(0, 10),
     };
 
+    setAppointments((prev) => {
+      const updated = [...prev, newApp];
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
+      return updated;
+    });
+
     try {
-      await setDoc(doc(db, "appointments", generatedId), newApp);
+      await odooService.createAppointment({
+        name: newApp.service,
+        start: startStr,
+        stop: endStr,
+        duration: 90,
+        description: `Cita para ${newApp.ownerName}`,
+      });
     } catch (err) {
-      console.error("Failed to commit manual booking", err);
+      console.warn("[App] Odoo appointment creation failed (local save ok):", err);
     }
     setView("calendar");
   };
@@ -2288,7 +2066,6 @@ export default function App() {
     ...(session.role === "administrador"
       ? [
           { id: "saas_control", name: "Hospedaje SaaS", icon: "payments" },
-          { id: "omnichannel_integration", name: "Integración omnicanal", icon: "cloud" }
         ]
       : []),
     { id: "dashboard", name: "Dashboard", icon: "dashboard" },
@@ -2313,7 +2090,6 @@ export default function App() {
     ...(session.role === "administrador"
       ? [
           { id: "saas_control", label: "SaaS", icon: "payments" },
-          { id: "omnichannel_integration", label: "Omnicanal", icon: "cloud" }
         ]
       : []),
     { id: "dashboard", label: "Inicio", icon: "dashboard" },
@@ -2565,20 +2341,7 @@ export default function App() {
                   onDeleteOwner={handleDeleteOwner}
                   onNavigateBack={() => setView("dashboard")}
                   userRole={session.role}
-                  onNavigateToOmnichannel={() => setView("omnichannel_integration")}
                 />
-              )
-            )}
-
-            {currentView === "omnichannel_integration" && (
-              session.role === "administrador" ? (
-                <OmnichannelIntegrationView onBack={() => setView("admin_management")} />
-              ) : (
-                <div className="bg-white rounded-[2.5rem] p-8 border border-outline-variant/30 font-sans text-center max-w-md mx-auto space-y-4 shadow-sm">
-                  <span className="material-symbols-outlined text-4xl text-warm-terracotta">lock</span>
-                  <p className="font-serif text-lg font-bold">Falta de Rango</p>
-                  <p className="text-xs text-on-surface-variant">La configuración de canales de mensajería requiere rol de Administrador SaaS.</p>
-                </div>
               )
             )}
 

@@ -1,9 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { ChatThread, ChatMessage, MetaChannelConfig } from "../types";
-import * as metaWhatsAppService from "../services/metaWhatsAppService";
-import * as metaMessengerService from "../services/metaMessengerService";
-import * as metaInstagramService from "../services/metaInstagramService";
-import { useMetaChannels } from "../context/MetaChannelsContext";
+import * as chatwootService from "../services/chatwootService";
 
 // Audio Playback Player Component for playable audio note bubbles
 export function AudioPlaybackWidget({ durationStr, isMe }: { durationStr: string; isMe: boolean }) {
@@ -88,7 +85,6 @@ export function MessagingView({
   setActiveChatId,
   clientChannelsConfig,
 }: MessagingViewProps) {
-  const { metaChannelsConfig } = useMetaChannels();
   const [filter, setFilter] = useState<"Todos" | "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | string>("Todos");
   const [inputText, setInputText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -202,17 +198,12 @@ export function MessagingView({
   };
 
   const dispatchSendMessage = async (thread: ChatThread, text: string, isAudio = false, audioDuration?: string) => {
-    const ch = thread.channel.toLowerCase();
-    let newMsg: ChatMessage;
-    
-    if (ch === "whatsapp") {
-      newMsg = await metaWhatsAppService.sendMessage(metaChannelsConfig?.whatsapp, thread.id, { text, isAudio, audioDuration });
-    } else if (ch === "facebook") {
-      newMsg = await metaMessengerService.sendMessage(metaChannelsConfig?.facebook, thread.id, { text });
-    } else if (ch === "instagram") {
-      newMsg = await metaInstagramService.sendMessage(metaChannelsConfig?.instagram, thread.id, { text });
-    } else {
-      newMsg = {
+    try {
+      const newMsg = await chatwootService.sendMessage(thread.id, { text, isAudio, audioDuration });
+      return newMsg;
+    } catch (err) {
+      console.warn("[MessagingView] chatwootService send failed, using local fallback:", err);
+      const fallback: ChatMessage = {
         id: `m_sent_${Date.now()}`,
         sender: "me",
         text,
@@ -221,8 +212,8 @@ export function MessagingView({
         audioDuration,
         channel: thread.channel
       };
+      return fallback;
     }
-    return newMsg;
   };
 
   const sendVoiceRecording = async () => {
@@ -234,7 +225,7 @@ export function MessagingView({
       const newVoiceMsg = await dispatchSendMessage(activeThread, "Nota de voz", true, durationStr);
       const updatedMessages = [...activeThread.messages, newVoiceMsg];
       
-      let updatedThreads = chatThreads.map((t) => {
+      let updatedThreads: ChatThread[] = chatThreads.map((t): ChatThread => {
         if (t.id === activeThread.id) {
           return {
             ...t,
@@ -274,7 +265,7 @@ export function MessagingView({
         }
 
         onUpdateThreads(
-          updatedThreads.map((t) => {
+          updatedThreads.map((t): ChatThread => {
             if (t.id === activeThread.id) {
               return {
                 ...t,
@@ -298,29 +289,19 @@ export function MessagingView({
     
     const loadServiceMessages = async () => {
       try {
-        let fetched: ChatMessage[] = [];
-        const ch = activeThread.channel.toLowerCase();
-        if (ch === "whatsapp") {
-          fetched = await metaWhatsAppService.listMessages(metaChannelsConfig?.whatsapp, activeThread.id);
-        } else if (ch === "facebook") {
-          fetched = await metaMessengerService.listMessages(metaChannelsConfig?.facebook, activeThread.id);
-        } else if (ch === "instagram") {
-          fetched = await metaInstagramService.listMessages(metaChannelsConfig?.instagram, activeThread.id);
-        }
-        
+        const fetched = await chatwootService.listMessages(activeThread.id);
         if (fetched.length > 0) {
           const threadMsgCount = activeThread.messages.length;
           const fetchedMsgCount = fetched.length;
-          // Only update if there is a difference to avoid infinite render loops
           if (threadMsgCount !== fetchedMsgCount) {
-            const updated = chatThreads.map((t) =>
+            const updated: ChatThread[] = chatThreads.map((t): ChatThread =>
               t.id === activeThread.id ? { ...t, messages: fetched } : t
             );
             onUpdateThreads(updated);
           }
         }
       } catch (err) {
-        console.warn("[MessagingView] Error loading messages from integration services:", err);
+        console.warn("[MessagingView] Error loading messages from Chatwoot:", err);
       }
     };
     
@@ -367,7 +348,7 @@ export function MessagingView({
       const updatedMessages = [...activeThread.messages, newMsg];
       
       // Update threads state
-      let updatedThreads = chatThreads.map((t) => {
+      let updatedThreads: ChatThread[] = chatThreads.map((t): ChatThread => {
         if (t.id === activeThread.id) {
           return {
             ...t,
@@ -400,7 +381,7 @@ export function MessagingView({
         };
 
         onUpdateThreads(
-          updatedThreads.map((t) => {
+          updatedThreads.map((t): ChatThread => {
             if (t.id === activeThread.id) {
               return {
                 ...t,

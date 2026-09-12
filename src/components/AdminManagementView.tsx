@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Service, Product, Owner, Pet, ServicePricing, UserRole } from "../types";
-import { db } from "../firebase";
 
 export interface IntegrationConfig {
   n8nWebhookUrl: string;
@@ -79,24 +78,18 @@ export function AdminManagementView({
     }
   ]);
 
-  // Load config on mount
+  // Load config from localStorage on mount
   useEffect(() => {
-    async function loadConfig() {
-      setLoadingConfig(true);
-      try {
-        const { doc, getDoc } = await import("firebase/firestore");
-        const docRef = doc(db, "configs", "integrations");
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setIntegrationConfig({ ...DEFAULT_INTEGRATION_CONFIG, ...docSnap.data() });
-        }
-      } catch (err) {
-        console.warn("Failed to load integrations configuration from Firestore:", err);
-      } finally {
-        setLoadingConfig(false);
+    try {
+      const saved = localStorage.getItem("integration_config");
+      if (saved) {
+        setIntegrationConfig({ ...DEFAULT_INTEGRATION_CONFIG, ...JSON.parse(saved) });
       }
+    } catch (err) {
+      console.warn("Failed to load integrations config from localStorage:", err);
+    } finally {
+      setLoadingConfig(false);
     }
-    loadConfig();
   }, []);
 
   const handleSaveConfig = async (e?: React.FormEvent) => {
@@ -104,9 +97,7 @@ export function AdminManagementView({
     setSavingConfig(true);
     setStatusMessage(null);
     try {
-      const { doc, setDoc } = await import("firebase/firestore");
-      const docRef = doc(db, "configs", "integrations");
-      await setDoc(docRef, integrationConfig);
+      localStorage.setItem("integration_config", JSON.stringify(integrationConfig));
       setStatusMessage({ text: "✓ Configuración de integraciones guardada con éxito", success: true });
       setTimeout(() => setStatusMessage(null), 4000);
     } catch (err) {
@@ -408,17 +399,7 @@ export function AdminManagementView({
           </button>
         )}
 
-        {userRole === "administrador" && (
-          <button
-            type="button"
-            onClick={onNavigateToOmnichannel}
-            className="px-4 py-2.5 font-sans text-xs font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border-transparent text-outline hover:text-primary"
-          >
-            <span className="material-symbols-outlined text-base">cloud</span>
-            <span>Integración omnicanal</span>
-          </button>
-        )}
-      </div>
+        </div>
 
       {/* Search Bar */}
       {activeTab !== "integrations" && (

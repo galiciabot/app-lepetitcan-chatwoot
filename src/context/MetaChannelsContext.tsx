@@ -1,6 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import React, { createContext, useContext, useState } from "react";
 
 export type MetaChannelsConfig = {
   whatsapp?: { phoneNumberId: string; wabaId: string; accessToken: string };
@@ -25,36 +23,11 @@ export function MetaChannelsProvider({ children }: { children: React.ReactNode }
       return {};
     }
   });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadConfig() {
-      try {
-        const docRef = doc(db, "configs", "meta_channels");
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const cloudConfig = docSnap.data() as MetaChannelsConfig;
-          setMetaChannelsConfig(cloudConfig);
-          localStorage.setItem("meta_channels_config", JSON.stringify(cloudConfig));
-        }
-      } catch (err) {
-        console.warn("Error loading meta channels config from Firestore, using offline cached copy:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadConfig();
-  }, []);
+  const [loading] = useState(false);
 
   const saveMetaChannelsConfig = async (newConfig: MetaChannelsConfig) => {
     setMetaChannelsConfig(newConfig);
     localStorage.setItem("meta_channels_config", JSON.stringify(newConfig));
-    try {
-      const docRef = doc(db, "configs", "meta_channels");
-      await setDoc(docRef, newConfig);
-    } catch (err) {
-      console.error("Error saving meta channels config to Firestore:", err);
-    }
   };
 
   return (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Appointment } from "../types";
-import { googleSignIn, getAccessToken, logoutGoogle, initAuth } from "../firebase";
+import { googleSignIn, logoutGoogle, initAuth } from "../firebase";
 import { User } from "firebase/auth";
 
 interface CalendarViewProps {
