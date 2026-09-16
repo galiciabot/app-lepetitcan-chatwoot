@@ -13,11 +13,17 @@ function headers() {
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: "GET", headers: headers() });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
-  const data = await res.json();
-  if (Array.isArray(data)) return data as T;
-  if (data && Array.isArray(data.data)) return data.data as T;
-  if (data && typeof data === "object" && data.id) return [data] as T;
-  return data as T;
+  const text = await res.text();
+  if (!text || !text.trim()) return [] as T;
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data)) return data as T;
+    if (data && Array.isArray(data.data)) return data.data as T;
+    if (data && typeof data === "object" && data.id) return [data] as T;
+    return data as T;
+  } catch {
+    return [] as T;
+  }
 }
 
 async function post<T>(path: string, body: any): Promise<T> {
