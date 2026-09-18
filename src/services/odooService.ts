@@ -10,6 +10,12 @@ function headers() {
   };
 }
 
+function unwrap(item: any): any {
+  if (!item || typeof item !== "object") return item;
+  if (item.json && typeof item.json === "object") return item.json;
+  return item;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: "GET", headers: headers() });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
@@ -17,9 +23,9 @@ async function get<T>(path: string): Promise<T> {
   if (!text || !text.trim()) return [] as T;
   try {
     const data = JSON.parse(text);
-    if (Array.isArray(data)) return data as T;
-    if (data && Array.isArray(data.data)) return data.data as T;
-    if (data && typeof data === "object" && data.id) return [data] as T;
+    if (Array.isArray(data)) return data.map(unwrap) as T;
+    if (data && Array.isArray(data.data)) return data.data.map(unwrap) as T;
+    if (data && typeof data === "object" && data.id) return [unwrap(data)] as T;
     return data as T;
   } catch {
     return [] as T;
