@@ -79,6 +79,18 @@ export async function deleteContact(id: number | string): Promise<any> {
   return post<any>("/delete-contact", { id: String(id) });
 }
 
+export async function updateContact(id: number | string, data: {
+  name?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  street?: string;
+  city?: string;
+  zip?: string;
+}): Promise<any> {
+  return post<any>("/update-contact", { id: String(id), ...data });
+}
+
 // ========== APPOINTMENTS ==========
 
 export interface OdooAppointment {

@@ -1856,17 +1856,23 @@ export default function App() {
       localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
       return copy;
     });
+    const isOdooContact = /^\d+$/.test(owner.id);
     try {
-      await odooService.createContact({
+      const payload = {
         name: owner.name,
         email: owner.contact || undefined,
         phone: owner.phone || undefined,
         mobile: owner.phone2 || undefined,
         city: owner.city || undefined,
         zip: owner.zipCode || undefined,
-      });
+      };
+      if (isOdooContact) {
+        await odooService.updateContact(owner.id, payload);
+      } else {
+        await odooService.createContact(payload);
+      }
     } catch (err) {
-      console.warn("[App] Odoo save failed (local save ok):", err);
+      console.warn("[App] Odoo save/update failed (local save ok):", err);
     }
   };
 
