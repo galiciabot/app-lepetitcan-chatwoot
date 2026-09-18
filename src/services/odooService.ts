@@ -39,7 +39,9 @@ async function post<T>(path: string, body: any): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
-  return res.json();
+  const text = await res.text();
+  if (!text || !text.trim()) return {} as T;
+  try { return JSON.parse(text) as T; } catch { return {} as T; }
 }
 
 // ========== CONTACTS ==========
@@ -71,6 +73,10 @@ export async function createContact(data: {
   zip?: string;
 }): Promise<any> {
   return post<any>("/create-contact", data);
+}
+
+export async function deleteContact(id: number | string): Promise<any> {
+  return post<any>("/delete-contact", { id: String(id) });
 }
 
 // ========== APPOINTMENTS ==========
@@ -128,11 +134,12 @@ export function partnerToOwner(raw: RawPartner): Owner {
     firstName: raw.name?.split(" ")[0] || "",
     lastName: raw.name?.split(" ").slice(1).join(" ") || "",
     contact: raw.email || "",
-    phone: raw.phone || raw.mobile || "",
+    phone: raw.phone || "",
+    phone2: raw.mobile || undefined,
     city: raw.city || undefined,
     zipCode: raw.zip || undefined,
     since: "",
-    avatar: "",
+    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(raw.name)}&background=755848&color=fff&size=128`,
     pets: [],
   };
 }

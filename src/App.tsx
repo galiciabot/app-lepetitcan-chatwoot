@@ -1861,6 +1861,7 @@ export default function App() {
         name: owner.name,
         email: owner.contact || undefined,
         phone: owner.phone || undefined,
+        mobile: owner.phone2 || undefined,
         city: owner.city || undefined,
         zip: owner.zipCode || undefined,
       });
@@ -1875,6 +1876,11 @@ export default function App() {
       localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
       return copy;
     });
+    try {
+      await odooService.deleteContact(id);
+    } catch (err) {
+      console.warn("[App] Odoo delete failed (local delete ok):", err);
+    }
   };
 
   // Selected owner/pet focus context states for ClientDetailView
