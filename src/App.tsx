@@ -1889,6 +1889,30 @@ export default function App() {
     }
   };
 
+  const handleBookingCreated = async (appointment: Appointment) => {
+    setAppointments((prev) => {
+      const updated = [...prev, appointment];
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
+      return updated;
+    });
+    try {
+      const dateStr = appointment.date || new Date().toISOString().slice(0, 10);
+      const timeStr = appointment.rawTime || appointment.time || "09:00";
+      const start = `${dateStr} ${timeStr}`;
+      const endHour = String(Math.min(23, parseInt(timeStr.split(":")[0]) + 2)).padStart(2, "0");
+       const end = `${dateStr} ${endHour}:${timeStr.split(":")[1] || "00"}`;
+      await odooService.createAppointment({
+        name: `${appointment.dogName} — ${appointment.service}`,
+        start,
+        stop: end,
+        duration: 90,
+        description: `Cliente: ${appointment.ownerName} | Tel: ${appointment.ownerPhone || ""} | Email: ${appointment.ownerEmail || ""}`,
+      });
+    } catch (err) {
+      console.warn("[App] Odoo appointment creation failed (local save ok):", err);
+    }
+  };
+
   // Selected owner/pet focus context states for ClientDetailView
   const [selectedOwnerIdForDetail, setSelectedOwnerIdForDetail] = useState<string | undefined>(undefined);
   const [selectedPetIdForDetail, setSelectedPetIdForDetail] = useState<string | undefined>(undefined);
@@ -2318,9 +2342,7 @@ export default function App() {
               <BookingWidget
                 services={services}
                 onNavigateBack={() => setView("dashboard")}
-                onAppointmentCreated={() => {
-                  // Stay in the appointment creator view to enable fluid consecutive scheduling
-                }}
+                onAppointmentCreated={handleBookingCreated}
               />
             )}
 
@@ -2342,9 +2364,7 @@ export default function App() {
               <BookingWidget
                 services={services}
                 onNavigateBack={() => setView("dashboard")}
-                onAppointmentCreated={() => {
-                  // Stay in the appointment creator view to enable fluid consecutive scheduling
-                }}
+onAppointmentCreated={handleBookingCreated}
               />
             )}
 
