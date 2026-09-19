@@ -1874,6 +1874,24 @@ export default function App() {
     } catch (err) {
       console.warn("[App] Odoo save/update failed (local save ok):", err);
     }
+    // Sync pets to Odoo for existing Odoo contacts
+    if (isOdooContact && owner.pets?.length) {
+      for (const pet of owner.pets) {
+        if (/^\d+$/.test(pet.id)) continue; // already in Odoo
+        try {
+          await odooService.createPet({
+            name: pet.name,
+            parent_id: Number(owner.id),
+            breed: pet.breed || "",
+            size: pet.size,
+            behavior: pet.behavior,
+            birthDate: pet.birthDate,
+          });
+        } catch (err) {
+          console.warn("[App] Odoo pet creation failed:", pet.name, err);
+        }
+      }
+    }
   };
 
   const handleDeleteOwner = async (id: string) => {

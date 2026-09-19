@@ -57,6 +57,9 @@ export interface RawPartner {
   street?: string | false;
   city?: string | false;
   zip?: string | false;
+  function?: string | false;
+  comment?: string | false;
+  pets?: RawPartner[];
 }
 
 export async function getContacts(): Promise<RawPartner[]> {
@@ -89,6 +92,26 @@ export async function updateContact(id: number | string, data: {
   zip?: string;
 }): Promise<any> {
   return post<any>("/update-contact", { id: String(id), ...data });
+}
+
+export async function createPet(data: {
+  name: string;
+  parent_id: number;
+  breed: string;
+  size?: string;
+  behavior?: string;
+  birthDate?: string;
+}): Promise<any> {
+  return post<any>("/create-pet", {
+    name: data.name,
+    parent_id: data.parent_id,
+    breed: data.breed,
+    comment: JSON.stringify({
+      size: data.size || "",
+      behavior: data.behavior || "",
+      birthDate: data.birthDate || "",
+    }),
+  });
 }
 
 // ========== APPOINTMENTS ==========
@@ -140,6 +163,26 @@ export async function healthCheck(): Promise<any> {
 // ========== TRANSFORMERS ==========
 
 export function partnerToOwner(raw: RawPartner): Owner {
+  const rawPets: RawPartner[] = raw.pets || [];
+  const pets: Pet[] = rawPets.map((rp): Pet => {
+    let extra: any = {};
+    try { if (rp.comment) extra = JSON.parse(rp.comment as string); } catch { extra = {}; }
+    return {
+      id: String(rp.id),
+      name: rp.name,
+      breed: (rp.function as string) || "",
+      size: extra.size || "Mediano",
+      behavior: extra.behavior || "",
+      birthDate: extra.birthDate || "",
+      avatarUrl: "",
+      avgDuration: "",
+      status: "ACTIVO",
+      lastVisitDate: "",
+      lastVisitService: "",
+      history: [],
+    };
+  });
+
   return {
     id: String(raw.id),
     name: raw.name,
@@ -152,7 +195,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
     zipCode: raw.zip || undefined,
     since: "",
     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(raw.name)}&background=755848&color=fff&size=128`,
-    pets: [],
+    pets,
   };
 }
 
