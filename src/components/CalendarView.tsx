@@ -27,16 +27,13 @@ export function CalendarView({
   onUpdateAppointmentStatus,
 }: CalendarViewProps) {
   // Reactive Date state, initialized to June 20, 2026 (matching system base)
-  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date(2026, 5, 20));
-  const [viewType, setViewType] = useState<"Dia" | "Semana" | "Mes">("Dia");
-
-  // We derive selected components for backward compatibility
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const selectedDay = selectedDate.getDate();
   const selectedMonth = selectedDate.getMonth();
   const selectedYear = selectedDate.getFullYear();
-
-  // Month grid navigation helper state
-  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date(2026, 5, 20));
+  // Google Calendar Auth & Sync states with granular control
+  const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date());
+const [viewType, setViewType] = useState<"Dia" | "Semana" | "Mes">("Dia");
 
   // Google Calendar Integration State
   const [googleUser, setGoogleUser] = useState<User | null>(null);
