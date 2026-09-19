@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Appointment, Service } from "../types";
+import { Appointment, Service, Owner } from "../types";
 import { lookupZoneByZip } from "./ClientDetailView";
 
 export const SPANISH_DOG_BREEDS = [
@@ -35,9 +35,10 @@ interface BookingWidgetProps {
   onAppointmentCreated?: (appointment: Appointment) => void;
   onNavigateBack?: () => void;
   services?: Service[];
+  owners?: Owner[];
 }
 
-export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }: BookingWidgetProps) {
+export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, owners }: BookingWidgetProps) {
   // Booking Form wizard step state: 1: Service, 2: Date & Time, 3: Dog Info & Contact, 4: Success Receipt
   const [step, setStep] = useState<number>(1);
 
@@ -189,12 +190,63 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
   const [ownerInstagram, setOwnerInstagram] = useState<string>("");
   const [ownerFacebook, setOwnerFacebook] = useState<string>("");
   const [lopdChecked, setLopdChecked] = useState<boolean>(false);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
+  const [selectedPetIndex, setSelectedPetIndex] = useState<number>(-1);
+  const [newPetName, setNewPetName] = useState<string>("");
+  const [newPetBreed, setNewPetBreed] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // High-fidelity receipt state stored for display after creation
   const [createdReceipt, setCreatedReceipt] = useState<Appointment | null>(null);
   const [successBanner, setSuccessBanner] = useState<{ dogName: string; date: string; time: string; id: string } | null>(null);
+
+  // Contact & pet selection handler when user picks an existing Odoo contact
+  const handleSelectContact = (ownerId: string) => {
+    setSelectedContactId(ownerId);
+    setSelectedPetIndex(-1);
+    setNewPetName("");
+    setNewPetBreed("");
+    if (!owners) return;
+    const owner = owners.find(o => o.id === ownerId);
+    if (!owner) return;
+    setOwnerFirstName(owner.firstName || owner.name.split(" ")[0] || "");
+    setOwnerLastName(owner.lastName || owner.name.split(" ").slice(1).join(" ") || "");
+    setOwnerPhone(owner.phone || "");
+    setOwnerPhone2(owner.phone2 || "");
+    setOwnerEmail(owner.contact || "");
+    setOwnerCity(owner.city || "");
+    setOwnerZipCode(owner.zipCode || "");
+  };
+
+  // When a pet is selected from the contact's list
+  const handleSelectPet = (index: number) => {
+    setSelectedPetIndex(index);
+    setNewPetName("");
+    setNewPetBreed("");
+    if (!owners) return;
+    const owner = owners.find(o => o.id === selectedContactId);
+    if (!owner || !owner.pets) return;
+    const pet = owner.pets[index];
+    if (!pet) return;
+    setDogName(pet.name || "");
+    setBreed(pet.breed || "Otro");
+  };
+
+  // Reset contact selection to manual entry
+  const handleResetContact = () => {
+    setSelectedContactId("");
+    setSelectedPetIndex(-1);
+    setOwnerFirstName("");
+    setOwnerLastName("");
+    setOwnerPhone("");
+    setOwnerPhone2("");
+    setOwnerEmail("");
+    setOwnerCity("");
+    setOwnerZipCode("");
+    setDogName("");
+    setBreed("Otro");
+  };
 
   // Dynamic open booking days (upcoming 6 business days skipping Sundays)
   const getUpcomingDays = () => {
@@ -279,11 +331,6 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
 
     if (!dogName || !finalBreed || !ownerFirstName || !ownerPhone || !ownerEmail) {
       setErrorMsg("Por favor, rellene todos los campos obligatorios del formulario, incluida la raza del perro.");
-      return;
-    }
-
-    if (!lopdChecked) {
-      setErrorMsg("Debe aceptar obligatoriamente la Cláusula LOPD de Tratamiento de Datos Personales.");
       return;
     }
 
@@ -611,10 +658,65 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
       {step === 3 && (
         <form onSubmit={handleCreateBooking} className="space-y-6">
           <div className="space-y-1.5">
-            <h3 className="font-serif text-lg font-bold text-primary">3. Ficha clínica de admisión canina</h3>
-            <p className="text-xs text-on-surface-variant">
-              Por normativa española de protección de datos (LOPD 3/2018), recopilamos la información exclusivamente para el tratamiento higiénico de su mascota.
-            </p>
+            <h3 className="font-serif text-lg font-bold text-primary">3. Datos del cliente y su mascota</h3>
+            
+            {/* Contact Selector */}
+            <div className="bg-white p-4 rounded-2xl border border-outline-variant/20 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-lg text-[#cf9681]">person_search</span>
+                <label className="text-xs font-extrabold text-on-surface uppercase tracking-wider">Buscar cliente existente</label>
+              </div>
+              <select
+                value={selectedContactId}
+                onChange={(e) => {
+                  if (e.target.value) handleSelectContact(e.target.value);
+                  else handleResetContact();
+                }}
+                className="w-full px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+              >
+                <option value="">— Nuevo cliente (rellenar manualmente) —</option>
+                {(owners || []).filter(o => o.name && o.name !== "My Company").map(owner => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.name} {owner.phone ? `· ${owner.phone}` : ""}
+                  </option>
+                ))}
+              </select>
+
+              {/* Show pets when a contact is selected */}
+              {selectedContactId && (() => {
+                const sel = owners?.find(o => o.id === selectedContactId);
+                const pets = sel?.pets || [];
+                return (
+                  <div className="pt-2 border-t border-outline-variant/10">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="material-symbols-outlined text-base text-[#cf9681]">pets</span>
+                      <span className="text-[11px] font-extrabold text-on-surface uppercase tracking-wider">Mascotas registradas</span>
+                    </div>
+                    {pets.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {pets.map((pet, idx) => (
+                          <button
+                            type="button"
+                            key={pet.id}
+                            onClick={() => handleSelectPet(idx)}
+                            className={`text-left p-2.5 rounded-xl border text-xs transition-all ${
+                              selectedPetIndex === idx
+                                ? "bg-secondary text-white border-secondary"
+                                : "bg-white border-outline-variant/30 hover:border-primary/30"
+                            }`}
+                          >
+                            <span className="font-bold block truncate">{pet.name}</span>
+                            <span className="text-[10px] opacity-75 truncate">{pet.breed} · {pet.size}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-outline italic">Este cliente no tiene mascotas registradas.</p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -632,8 +734,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                     type="text"
                     required
                     placeholder="Ej. Clara"
-                    value={ownerFirstName}
-                    onChange={(e) => setOwnerFirstName(e.target.value)}
+value={ownerFirstName}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerFirstName(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                   />
                 </div>
@@ -642,8 +745,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                   <input
                     type="text"
                     placeholder="Ej. Maldonado Díaz"
-                    value={ownerLastName}
-                    onChange={(e) => setOwnerLastName(e.target.value)}
+value={ownerLastName}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerLastName(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                   />
                 </div>
@@ -656,8 +760,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                     type="tel"
                     required
                     placeholder="Ej: +34 612901234"
-                    value={ownerPhone}
-                    onChange={(e) => setOwnerPhone(e.target.value)}
+value={ownerPhone}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerPhone(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                   />
                 </div>
@@ -667,8 +772,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                   <input
                     type="tel"
                     placeholder="Ej: +34 912345678"
-                    value={ownerPhone2}
-                    onChange={(e) => setOwnerPhone2(e.target.value)}
+value={ownerPhone2}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerPhone2(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                   />
                 </div>
@@ -680,8 +786,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                   type="email"
                   required
                   placeholder="cliente@dominio.com"
-                  value={ownerEmail}
-                  onChange={(e) => setOwnerEmail(e.target.value)}
+value={ownerEmail}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerEmail(e.target.value)}
                   className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                 />
               </div>
@@ -692,8 +799,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                   <input
                     type="text"
                     placeholder="Ej: Vigo"
-                    value={ownerCity}
-                    onChange={(e) => setOwnerCity(e.target.value)}
+value={ownerCity}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerCity(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                   />
                 </div>
@@ -702,8 +810,9 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                   <input
                     type="text"
                     placeholder="Ej: 36201"
-                    value={ownerZipCode}
-                    onChange={(e) => setOwnerZipCode(e.target.value)}
+value={ownerZipCode}
+                     disabled={!!selectedContactId}
+                     onChange={(e) => setOwnerZipCode(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:bg-background"
                   />
                   {ownerZipCode && (
@@ -715,46 +824,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
                 </div>
               </div>
 
-              <div className="bg-[#cf9681]/5 rounded-2xl p-3 border border-[#cf9681]/15 space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#cf9681] flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[11px]">forum</span>
-                  <span>Canales de Mensajería</span>
-                </p>
-                <p className="text-[9px] text-outline leading-tight">
-                  Vincula las redes del propietario para unificar automáticamente los hilos de conversación.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[11px] text-pink-600 font-bold">alternate_email</span>
-                      <span>Usuario Instagram</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: @clara"
-                      value={ownerInstagram}
-                      onChange={(e) => setOwnerInstagram(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-outline-variant/30 rounded-full text-[11px] focus:outline-none focus:border-primary"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[11px] text-blue-600 font-bold">contact_mail</span>
-                      <span>FB Messenger</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: clara.fb"
-                      value={ownerFacebook}
-                      onChange={(e) => setOwnerFacebook(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-outline-variant/30 rounded-full text-[11px] focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                </div>
               </div>
-            </div>
 
             {/* Dog Section */}
             <div className="bg-white p-5 rounded-3xl border border-outline-variant/20 space-y-4 text-left">
@@ -902,26 +972,6 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services }
               </div>
             </div>
 
-          </div>
-
-          {/* RGPD-LOPD Compliance Checkbox inside client widget */}
-          <div className="bg-ivory-base/80 p-4 rounded-3xl border border-outline-variant/30 space-y-2.5">
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                required
-                className="mt-1 h-4.5 w-4.5 rounded border-outline-variant text-primary focus:ring-primary cursor-pointer accent-primary shrink-0"
-                checked={lopdChecked}
-                onChange={(e) => setLopdChecked(e.target.checked)}
-              />
-              <span className="text-[10.5px] text-on-surface-variant leading-relaxed text-left block font-sans">
-                <b>Tratamiento de Datos Personales (RGPD &amp; LOPD-GDD 3/2018):</b> Doy mi consentimiento de forma libre e informada a <i>Le Petit Can Boutique</i> para almacenar mi información de contacto para agendar la cita y comunicarle recordatorios técnicos por SMS/Email. No compartiremos nunca su información con rastreadores ni cookies de Meta/Google.
-              </span>
-            </label>
-            <p className="pl-7 text-[9px] text-outline flex items-center gap-1">
-              <span className="material-symbols-outlined text-[11px]">gavel</span>
-              <span>Puedes ejercitar tus derechos de Acceso y Supresión (ARCO-POL) enviando un email en la sección legal del salón.</span>
-            </p>
           </div>
 
           {errorMsg && (

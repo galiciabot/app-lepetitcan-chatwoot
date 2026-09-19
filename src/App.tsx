@@ -1906,6 +1906,7 @@ export default function App() {
         start,
         stop: end,
         duration: 90,
+        partner_id: appointment.ownerPhone ? undefined : undefined,
         description: `Cliente: ${appointment.ownerName} | Tel: ${appointment.ownerPhone || ""} | Email: ${appointment.ownerEmail || ""}`,
       });
     } catch (err) {
@@ -2341,6 +2342,7 @@ export default function App() {
             {currentView === "new_appointment" && (
               <BookingWidget
                 services={services}
+                owners={owners}
                 onNavigateBack={() => setView("dashboard")}
                 onAppointmentCreated={handleBookingCreated}
               />
@@ -2363,6 +2365,7 @@ export default function App() {
             {currentView === "booking_widget" && (
               <BookingWidget
                 services={services}
+                owners={owners}
                 onNavigateBack={() => setView("dashboard")}
 onAppointmentCreated={handleBookingCreated}
               />
