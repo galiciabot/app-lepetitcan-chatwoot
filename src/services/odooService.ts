@@ -174,7 +174,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
       size: extra.size || "Mediano",
       behavior: extra.behavior || "",
       birthDate: extra.birthDate || "",
-      avatarUrl: "",
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(rp.name)}&background=446742&color=fff&size=128`,
       avgDuration: "",
       status: "ACTIVO",
       lastVisitDate: "",

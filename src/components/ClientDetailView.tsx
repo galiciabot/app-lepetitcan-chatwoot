@@ -1956,65 +1956,7 @@ export function ClientDetailView({
                   )}
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-primary block">Duración Estimada</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div className="flex items-center gap-1">
-                      <select
-                        value={durationHours}
-                        onChange={(e) => setDurationHours(e.target.value)}
-                        className="w-full px-2.5 py-2 text-xs border border-outline-variant/40 rounded-full focus:outline-none focus:border-primary bg-white"
-                      >
-                        <option value="0">0 h</option>
-                        <option value="1">1 h</option>
-                        <option value="2">2 h</option>
-                        <option value="3">3 h</option>
-                        <option value="4">4 h</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <select
-                        value={durationMinutes}
-                        onChange={(e) => setDurationMinutes(e.target.value)}
-                        className="w-full px-2.5 py-2 text-xs border border-outline-variant/40 rounded-full focus:outline-none focus:border-primary bg-white"
-                      >
-                        <option value="00">00 min</option>
-                        <option value="15">15 min</option>
-                        <option value="30">30 min</option>
-                        <option value="45">45 min</option>
-                      </select>
-                    </div>
-                  </div>
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-primary">Estado de Ficha</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
-                    <input
-                      type="radio"
-                      name="status"
-                      value="ACTIVO"
-                      checked={petForm.status === "ACTIVO"}
-                      onChange={() => setPetForm({ ...petForm, status: "ACTIVO" })}
-                      className="cursor-pointer"
-                    />
-                    <span>Activo</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
-                    <input
-                      type="radio"
-                      name="status"
-                      value="INACTIVO"
-                      checked={petForm.status === "INACTIVO"}
-                      onChange={() => setPetForm({ ...petForm, status: "INACTIVO" })}
-                      className="cursor-pointer"
-                    />
-                    <span>Inactivo</span>
-                  </label>
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-primary block">
