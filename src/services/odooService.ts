@@ -166,7 +166,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
   const rawPets: RawPartner[] = raw.pets || [];
   const pets: Pet[] = rawPets.map((rp): Pet => {
     let extra: any = {};
-    try { if (rp.comment) extra = JSON.parse(rp.comment as string); } catch { extra = {}; }
+    try { if (rp.comment) extra = JSON.parse(String(rp.comment).replace(/<[^>]*>/g, "")); } catch { extra = {}; }
     return {
       id: String(rp.id),
       name: rp.name,
