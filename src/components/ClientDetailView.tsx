@@ -319,10 +319,8 @@ export function ClientDetailView({
     }
   }, [initialOwnerId, initialPetId]);
 
-  const [filterActive, setFilterActive] = useState<boolean>(false);
-  const [reportOpen, setReportOpen] = useState<boolean>(false);
-  const [historyLimit, setHistoryLimit] = useState<number>(3);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [reportOpen, setReportOpen] = useState<boolean>(false);
 
   // Modals view controllers
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
@@ -630,7 +628,6 @@ export function ClientDetailView({
     } else {
       setSelectedPetId("");
     }
-    setHistoryLimit(3);
   };
 
   // CLIENT CRUD LOGIC
@@ -1003,26 +1000,12 @@ export function ClientDetailView({
     };
   });
 
-  const combinedHistory: any[] = [];
-  const addedIds = new Set<string>();
-
-  for (const item of mappedAppts) {
-    if (!addedIds.has(item.id)) {
-      combinedHistory.push(item);
-      addedIds.add(item.id);
-    }
-  }
-
+  const combinedHistory: any[] = mappedAppts as any[];
+  const addedIds = new Set(combinedHistory.map((h: any) => h.id));
   for (const item of (currentPet.history || [])) {
-    if (!addedIds.has(item.id)) {
-      combinedHistory.push(item);
-      addedIds.add(item.id);
-    }
+    if (!addedIds.has(item.id)) combinedHistory.push(item);
   }
-
-  const displayedHistory = filterActive
-    ? combinedHistory.filter((h) => h.serviceTitle.toLowerCase().includes("spa") || h.serviceTitle.toLowerCase().includes("premium"))
-    : combinedHistory.slice(0, historyLimit);
+  combinedHistory.sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
 
   return (
     <div className="w-full space-y-6">
@@ -1367,11 +1350,6 @@ export function ClientDetailView({
                           <span className="material-symbols-outlined text-primary text-sm">cake</span>
                           <span>{formatPetDisplayBirthdate(currentPet.birthDate)}</span>
                         </span>
-                        <span className="bg-primary/5 border border-primary/20 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold text-primary shadow-xs">
-                          <span className="material-symbols-outlined text-primary text-sm animate-pulse-slow">schedule</span>
-                          <span>Promedio: {currentPet.avgDuration}</span>
-                        </span>
-                      </div>
 
                       {/* Pet Admin Actions - Side-by-side, clean, responsive, and secure against wrapping/overflow */}
                       <div className="flex flex-row items-center gap-2 justify-center md:justify-start pt-2">
@@ -1394,130 +1372,58 @@ export function ClientDetailView({
                   </div>
 
                   {/* LAST VISIT STATS */}
-                  <div className="bg-primary-container/20 border border-primary-container text-on-primary-container rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row justify-between items-center gap-4 relative overflow-hidden group">
-                    <div className="z-10 text-left space-y-0.5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-primary opacity-80">
-                        ÚLTIMO RECONOCIMIENTO
-                      </p>
-                      <h4 className="font-serif text-lg font-bold text-anthracite-grey leading-tight">
-                        {currentPet.lastVisitDate}
-                      </h4>
-                      <p className="font-sans text-xs text-on-surface-variant">{currentPet.lastVisitService}</p>
-                    </div>
-                    <button
-                      onClick={() => setReportOpen(true)}
-                      className="z-10 shrink-0 bg-primary text-white hover:opacity-92 px-5 py-2.5 rounded-full font-sans text-xs font-bold active:scale-95 transition-all cursor-pointer shadow-sm"
-                    >
-                      Ver Informe de Cabina
-                    </button>
                   </div>
-
-                  {/* CLINIC AND STYLE HISTORY RECORDS */}
-                  <div className="text-left pt-2 space-y-4">
-                    <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">
-                      <h4 className="font-serif text-lg font-bold text-primary">
-                        Historial de Cabina y Estilo
-                      </h4>
-                      <button
-                        onClick={() => setFilterActive(!filterActive)}
-                        className={`font-sans text-xs font-bold flex items-center gap-1.5 hover:underline cursor-pointer transition-colors ${
-                          filterActive ? "text-secondary" : "text-primary"
-                        }`}
-                      >
-                        {filterActive ? "Mostrar Todos" : "Filtrar por SPA/Premium"}
-                        <span className="material-symbols-outlined text-sm">
-                          {filterActive ? "close" : "tune"}
-                        </span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      {displayedHistory.map((item) => (
-                        <div
-                          key={item.id}
-                          className="bg-ivory-base border border-outline-variant/30 rounded-2xl p-4.5 hover:bg-white transition-all duration-200 shadow-xs"
-                        >
-                          <div className="flex justify-between items-start mb-2.5">
-                            <div>
-                              <p className="text-[9px] font-bold text-warm-terracotta uppercase tracking-wider">
-                                {item.date}
-                              </p>
-                              <h5 className="font-sans text-sm font-bold text-anthracite-grey">
-                                {item.serviceTitle} {item.duration ? `• ${item.duration}` : ""}
-                              </h5>
-                            </div>
-                            <select
-                              value={item.status}
-                              onChange={(e) => {
-                                if (onUpdateAppointmentStatus) {
-                                  onUpdateAppointmentStatus(item.id, e.target.value);
-                                }
-                              }}
-                              className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase border-0 outline-none cursor-pointer focus:ring-1 focus:ring-primary ${
-                                item.status.toLowerCase().includes("confirm")
-                                  ? "bg-tertiary-container text-on-tertiary-container"
-                                  : item.status.toLowerCase().includes("camino")
-                                    ? "bg-secondary-container text-on-secondary-container"
-                                    : item.status.toLowerCase().includes("anul")
-                                      ? "bg-red-100 text-red-800"
-                                      : item.status.toLowerCase().includes("final")
-                                        ? "bg-stone-200 text-stone-800"
-                                        : "bg-primary-container text-on-primary-container"
-                              }`}
-                            >
-                              <option value="Pendiente">Pendiente</option>
-                              <option value="Confirmada">Confirmada</option>
-                              <option value="En camino">En Camino</option>
-                              <option value="En Proceso">En Proceso</option>
-                              <option value="Finalizada">Finalizada</option>
-                              <option value="Anulada">Anulada</option>
-                            </select>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                            <div>
-                              <p className="text-[8.5px] text-outline mb-1 font-bold uppercase tracking-wider">
-                                Tratamientos Aplicados
-                              </p>
-                              <ul className="space-y-0.5">
-                                {item.services && item.services.map((srv, idx) => (
-                                  <li key={idx} className="flex items-center gap-1.5 text-xs text-on-surface">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-secondary shrink-0"></span>{" "}
-                                    {srv}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div className="bg-surface-container/60 p-3 rounded-lg border-l-4 border-primary/20">
-                              <p className="text-[8.5px] text-outline mb-1 font-bold uppercase tracking-wider">
-                                Observaciones de Peluquería
-                              </p>
-                              <p className="text-[10.5px] italic text-on-surface-variant leading-relaxed">
-                                "{item.notes}"
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-
-                      {displayedHistory.length === 0 && (
-                        <p className="text-xs text-outline text-center py-4 italic">
-                          No hay registros que coincidan con la búsqueda.
-                        </p>
-                      )}
-                    </div>
-
-                    {!filterActive && historyLimit < (currentPet.history ? currentPet.history.length : 0) && (
-                      <div className="pt-2 text-center">
-                        <button
-                          onClick={() => setHistoryLimit((l) => l + 2)}
-                          className="border border-primary text-primary px-6 py-2.5 rounded-full font-sans text-xs font-bold hover:bg-primary hover:text-white transition-all active:scale-95 cursor-pointer shadow-xs"
-                        >
-                          Cargar historial completo
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                 {/* HISTORIAL DE SERVICIOS */}
+                 {combinedHistory.length > 0 && (
+                   <div className="text-left pt-2 space-y-4">
+                     <div className="border-b border-outline-variant/20 pb-3">
+                       <h4 className="font-serif text-lg font-bold text-primary">
+                         Historial de Servicios
+                       </h4>
+                     </div>
+                     <div className="space-y-max-h-[400px]-3 overflow-y-auto">
+                       {combinedHistory.map((item) => (
+                         <div
+                           key={item.id}
+                           className="bg-ivory-base border border-outline-variant/30 rounded-2xl p-4"
+                         >
+                           <p className="text-[9px] font-bold text-warm-terracotta uppercase tracking-wider">
+                             {item.date}
+                           </p>
+                           <h5 className="font-sans text-sm font-bold text-anthracite-grey mt-0.5">
+                             {item.serviceTitle} {item.duration ? `• ${item.duration}` : ""}
+                           </h5>
+                           <div className="mt-2">
+                             <textarea
+                               defaultValue={item.notes}
+                               placeholder="Observaciones del servicio..."
+                               onChange={(e) => {
+                                 item.notes = e.target.value;
+                                 if (onUpdateAppointmentStatus) {
+                                   onUpdateAppointmentStatus(item.id, item.status);
+                                 }
+                               }}
+                               className="w-full px-3 mt-2 py-2 text-[11px] border border-outline-variant/30 rounded-xl bg-white focus:outline-none focus:border-primary resize-none"
+                               rows={2}
+                             />
+                           </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+                 {combinedHistory.length === 0 && (
+                   <div className="text-left pt-2 space-y-4">
+                     <div className="border-b border-outline-variant/20 pb-3">
+                       <h4 className="font-serif text-lg font-bold text-primary">
+                         Historial de Servicios
+                       </h4>
+                     </div>
+                     <p className="text-xs text-outline text-center py-4 italic">
+                       No hay servicios registrados para esta mascota.
+                     </p>
+                   </div>
+                 )}
 
                 </section>
               ) : null}
