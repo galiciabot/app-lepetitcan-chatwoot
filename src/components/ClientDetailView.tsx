@@ -242,6 +242,8 @@ interface ClientDetailViewProps {
   owners?: Owner[];
   onSaveOwner?: (owner: Owner) => void | Promise<void>;
   onDeleteOwner?: (id: string) => void | Promise<void>;
+  onSavePet?: (pet: Pet, ownerId: string) => void | Promise<void>;
+  onDeletePet?: (ownerId: string, petId: string) => void | Promise<void>;
   appointments?: Appointment[];
   initialOwnerId?: string;
   initialPetId?: string;
@@ -253,6 +255,8 @@ export function ClientDetailView({
   owners,
   onSaveOwner,
   onDeleteOwner,
+  onSavePet,
+  onDeletePet,
   appointments,
   initialOwnerId,
   initialPetId,
@@ -861,11 +865,13 @@ export function ClientDetailView({
         avgDuration: computedDuration,
         status: petForm.status
       };
-      const updatedOwner: Owner = {
-        ...currentOwner,
-        pets: currentOwner.pets.map((p) => (p.id === currentPet.id ? updatedPet : p))
-      };
-      if (onSaveOwner) {
+      if (onSavePet) {
+        await onSavePet(updatedPet, currentOwner.id);
+      } else if (onSaveOwner) {
+        const updatedOwner: Owner = {
+          ...currentOwner,
+          pets: currentOwner.pets.map((p) => (p.id === currentPet.id ? updatedPet : p))
+        };
         await onSaveOwner(updatedOwner);
       }
     }
@@ -878,15 +884,18 @@ export function ClientDetailView({
       `¿Está absolutamente seguro de que desea eliminar la ficha de la mascota ${currentPet.name}?`
     );
     if (confirmDel) {
-      const updatedOwner: Owner = {
-        ...currentOwner,
-        pets: currentOwner.pets.filter((p) => p.id !== currentPet.id)
-      };
-      if (onSaveOwner) {
+      if (onDeletePet) {
+        await onDeletePet(currentOwner.id, currentPet.id);
+      } else if (onSaveOwner) {
+        const updatedOwner: Owner = {
+          ...currentOwner,
+          pets: currentOwner.pets.filter((p) => p.id !== currentPet.id)
+        };
         await onSaveOwner(updatedOwner);
       }
-      if (updatedOwner.pets.length > 0) {
-        setSelectedPetId(updatedOwner.pets[0].id);
+      const remaining = currentOwner.pets.filter((p) => p.id !== currentPet.id);
+      if (remaining.length > 0) {
+        setSelectedPetId(remaining[0].id);
       } else {
         setSelectedPetId("");
       }

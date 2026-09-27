@@ -1907,6 +1907,54 @@ export default function App() {
     }
   };
 
+  const handleSavePet = async (pet: Pet, ownerId: string) => {
+    setOwners((prev) => {
+      const copy = prev.map((owner) => {
+        if (owner.id !== ownerId) return owner;
+        return {
+          ...owner,
+          pets: owner.pets.map((p) => (p.id === pet.id ? pet : p)),
+        };
+      });
+      localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
+      return copy;
+    });
+    if (/^\d+$/.test(pet.id)) {
+      try {
+        await odooService.updatePet(pet.id, {
+          name: pet.name,
+          breed: pet.breed || "",
+          size: pet.size,
+          behavior: pet.behavior,
+          birthDate: pet.birthDate,
+        });
+      } catch (err) {
+        console.warn("[App] Odoo pet update failed (local save ok):", pet.name, err);
+      }
+    }
+  };
+
+  const handleDeletePet = async (ownerId: string, petId: string) => {
+    setOwners((prev) => {
+      const copy = prev.map((owner) => {
+        if (owner.id !== ownerId) return owner;
+        return {
+          ...owner,
+          pets: owner.pets.filter((p) => p.id !== petId),
+        };
+      });
+      localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
+      return copy;
+    });
+    if (/^\d+$/.test(petId)) {
+      try {
+        await odooService.deletePet(petId);
+      } catch (err) {
+        console.warn("[App] Odoo pet delete failed (local delete ok):", petId, err);
+      }
+    }
+  };
+
   const handleBookingCreated = async (appointment: Appointment) => {
     setAppointments((prev) => {
       const updated = [...prev, appointment];
@@ -2312,6 +2360,8 @@ export default function App() {
                 owners={owners}
                 onSaveOwner={handleSaveOwner}
                 onDeleteOwner={handleDeleteOwner}
+                onSavePet={handleSavePet}
+                onDeletePet={handleDeletePet}
                 onBack={() => setView("dashboard")}
                 appointments={appointments}
                 initialOwnerId={selectedOwnerIdForDetail}

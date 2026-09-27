@@ -114,6 +114,29 @@ export async function createPet(data: {
   });
 }
 
+export async function updatePet(id: number | string, data: {
+  name: string;
+  breed: string;
+  size?: string;
+  behavior?: string;
+  birthDate?: string;
+}): Promise<any> {
+  return post<any>("/update-pet", {
+    id: String(id),
+    name: data.name,
+    breed: data.breed,
+    comment: JSON.stringify({
+      size: data.size || "",
+      behavior: data.behavior || "",
+      birthDate: data.birthDate || "",
+    }),
+  });
+}
+
+export async function deletePet(id: number | string): Promise<any> {
+  return post<any>("/delete-pet", { id: String(id) });
+}
+
 // ========== APPOINTMENTS ==========
 
 export interface OdooAppointment {
