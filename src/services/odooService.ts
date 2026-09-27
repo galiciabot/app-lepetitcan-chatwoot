@@ -16,6 +16,19 @@ function unwrap(item: any): any {
   return item;
 }
 
+export function imageFieldToUrl(b64?: string | false): string {
+  if (!b64 || typeof b64 !== "string" || !b64.length) return "";
+  if (b64.startsWith("data:")) return b64;
+  const prefix = b64.startsWith("/9j/") ? "data:image/jpeg;base64," : "data:image/png;base64,";
+  return prefix + b64;
+}
+
+export function dataUrlToBase64(url?: string): string {
+  if (!url || typeof url !== "string" || !url.startsWith("data:")) return "";
+  const comma = url.indexOf(",");
+  return comma > -1 ? url.slice(comma + 1) : "";
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: "GET", headers: headers() });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
@@ -59,6 +72,7 @@ export interface RawPartner {
   zip?: string | false;
   function?: string | false;
   comment?: string | false;
+  image_1920?: string | false;
   pets?: RawPartner[];
 }
 
@@ -74,6 +88,7 @@ export async function createContact(data: {
   street?: string;
   city?: string;
   zip?: string;
+  image?: string;
 }): Promise<any> {
   return post<any>("/create-contact", data);
 }
@@ -90,6 +105,7 @@ export async function updateContact(id: number | string, data: {
   street?: string;
   city?: string;
   zip?: string;
+  image?: string;
 }): Promise<any> {
   return post<any>("/update-contact", { id: String(id), ...data });
 }
@@ -101,6 +117,7 @@ export async function createPet(data: {
   size?: string;
   behavior?: string;
   birthDate?: string;
+  image?: string;
 }): Promise<any> {
   return post<any>("/create-pet", {
     name: data.name,
@@ -111,6 +128,7 @@ export async function createPet(data: {
       behavior: data.behavior || "",
       birthDate: data.birthDate || "",
     }),
+    image: data.image || "",
   });
 }
 
@@ -120,6 +138,7 @@ export async function updatePet(id: number | string, data: {
   size?: string;
   behavior?: string;
   birthDate?: string;
+  image?: string;
 }): Promise<any> {
   return post<any>("/update-pet", {
     id: String(id),
@@ -130,6 +149,7 @@ export async function updatePet(id: number | string, data: {
       behavior: data.behavior || "",
       birthDate: data.birthDate || "",
     }),
+    image: data.image || "",
   });
 }
 
@@ -197,7 +217,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
       size: extra.size || "Mediano",
       behavior: extra.behavior || "",
       birthDate: extra.birthDate || "",
-      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(rp.name)}&background=446742&color=fff&size=128`,
+      avatarUrl: imageFieldToUrl(rp.image_1920) || `https://ui-avatars.com/api/?name=${encodeURIComponent(rp.name)}&background=446742&color=fff&size=128`,
       avgDuration: "",
       status: "ACTIVO",
       lastVisitDate: "",
@@ -217,7 +237,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
     city: raw.city || undefined,
     zipCode: raw.zip || undefined,
     since: "",
-    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(raw.name)}&background=755848&color=fff&size=128`,
+    avatar: imageFieldToUrl(raw.image_1920) || `https://ui-avatars.com/api/?name=${encodeURIComponent(raw.name)}&background=755848&color=fff&size=128`,
     pets,
   };
 }

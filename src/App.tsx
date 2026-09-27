@@ -1860,11 +1860,12 @@ export default function App() {
     try {
       const payload = {
         name: owner.name,
-        email: owner.contact || undefined,
-        phone: owner.phone || undefined,
-        mobile: owner.phone2 || undefined,
-        city: owner.city || undefined,
-        zip: owner.zipCode || undefined,
+        email: owner.contact || "",
+        phone: owner.phone || "",
+        mobile: owner.phone2 || "",
+        city: owner.city || "",
+        zip: owner.zipCode || "",
+        image: odooService.dataUrlToBase64(owner.avatar),
       };
       if (isOdooContact) {
         await odooService.updateContact(owner.id, payload);
@@ -1886,6 +1887,7 @@ export default function App() {
             size: pet.size,
             behavior: pet.behavior,
             birthDate: pet.birthDate,
+            image: odooService.dataUrlToBase64(pet.avatarUrl),
           });
         } catch (err) {
           console.warn("[App] Odoo pet creation failed:", pet.name, err);
@@ -1927,6 +1929,7 @@ export default function App() {
           size: pet.size,
           behavior: pet.behavior,
           birthDate: pet.birthDate,
+          image: odooService.dataUrlToBase64(pet.avatarUrl),
         });
       } catch (err) {
         console.warn("[App] Odoo pet update failed (local save ok):", pet.name, err);

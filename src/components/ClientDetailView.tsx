@@ -43,6 +43,37 @@ const BEHAVIOR_PRESETS = [
   "Juguetón / Hiperactivo"
 ];
 
+async function resizeImageToDataUrl(file: File, maxDim = 512, quality = 0.85): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("read error"));
+    reader.readAsDataURL(file);
+  });
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("img error"));
+      i.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
 const SPANISH_MONTHS = [
   { value: "01", name: "Enero" },
   { value: "02", name: "Febrero" },
@@ -348,15 +379,10 @@ export function ClientDetailView({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
-  const handleImageFile = (file: File) => {
+  const handleImageFile = async (file: File) => {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result && typeof e.target.result === "string") {
-        setOwnerForm((prev) => ({ ...prev, avatar: e.target.result }));
-      }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await resizeImageToDataUrl(file);
+    setOwnerForm((prev) => ({ ...prev, avatar: dataUrl }));
   };
 
   const handlePasteEvent = (e: React.ClipboardEvent) => {
@@ -447,15 +473,10 @@ export function ClientDetailView({
   const [petCameraStream, setPetCameraStream] = useState<MediaStream | null>(null);
   const videoPetRef = React.useRef<HTMLVideoElement | null>(null);
 
-  const handlePetImageFile = (file: File) => {
+  const handlePetImageFile = async (file: File) => {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result && typeof e.target.result === "string") {
-        setPetForm((prev) => ({ ...prev, avatarUrl: e.target.result }));
-      }
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await resizeImageToDataUrl(file);
+    setPetForm((prev) => ({ ...prev, avatarUrl: dataUrl }));
   };
 
   const handlePetPasteEvent = (e: React.ClipboardEvent) => {
