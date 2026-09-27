@@ -1887,6 +1887,7 @@ export default function App() {
             size: pet.size,
             behavior: pet.behavior,
             birthDate: pet.birthDate,
+            notes: pet.notes || "",
             image: odooService.dataUrlToBase64(pet.avatarUrl),
           });
         } catch (err) {
@@ -1929,6 +1930,7 @@ export default function App() {
           size: pet.size,
           behavior: pet.behavior,
           birthDate: pet.birthDate,
+          notes: pet.notes || "",
           image: odooService.dataUrlToBase64(pet.avatarUrl),
         });
       } catch (err) {

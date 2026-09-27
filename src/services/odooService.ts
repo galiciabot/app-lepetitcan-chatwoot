@@ -117,6 +117,7 @@ export async function createPet(data: {
   size?: string;
   behavior?: string;
   birthDate?: string;
+  notes?: string;
   image?: string;
 }): Promise<any> {
   return post<any>("/create-pet", {
@@ -127,6 +128,7 @@ export async function createPet(data: {
       size: data.size || "",
       behavior: data.behavior || "",
       birthDate: data.birthDate || "",
+      notes: data.notes || "",
     }),
     image: data.image || "",
   });
@@ -138,6 +140,7 @@ export async function updatePet(id: number | string, data: {
   size?: string;
   behavior?: string;
   birthDate?: string;
+  notes?: string;
   image?: string;
 }): Promise<any> {
   return post<any>("/update-pet", {
@@ -148,6 +151,7 @@ export async function updatePet(id: number | string, data: {
       size: data.size || "",
       behavior: data.behavior || "",
       birthDate: data.birthDate || "",
+      notes: data.notes || "",
     }),
     image: data.image || "",
   });
@@ -217,6 +221,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
       size: extra.size || "Mediano",
       behavior: extra.behavior || "",
       birthDate: extra.birthDate || "",
+      notes: extra.notes || "",
       avatarUrl: imageFieldToUrl(rp.image_1920) || `https://ui-avatars.com/api/?name=${encodeURIComponent(rp.name)}&background=446742&color=fff&size=128`,
       avgDuration: "",
       status: "ACTIVO",

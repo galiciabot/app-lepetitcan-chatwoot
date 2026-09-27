@@ -121,6 +121,7 @@ export interface Pet {
   status: "ACTIVO" | "INACTIVO";
   lastVisitDate: string;
   lastVisitService: string;
+  notes?: string;
   history: VisitHistory[];
 }
 

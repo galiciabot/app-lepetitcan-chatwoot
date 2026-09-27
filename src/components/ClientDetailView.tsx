@@ -570,7 +570,8 @@ export function ClientDetailView({
     birthDate: "2 Años",
     avatarUrl: PRESET_PET_AVATARS[0],
     avgDuration: "1h 15min",
-    status: "ACTIVO" as "ACTIVO" | "INACTIVO"
+    status: "ACTIVO" as "ACTIVO" | "INACTIVO",
+    notes: ""
   });
 
   const [birthDay, setBirthDay] = useState<string>("15");
@@ -774,7 +775,8 @@ export function ClientDetailView({
       birthDate: "2024-06-15",
       avatarUrl: PRESET_PET_AVATARS[0],
       avgDuration: "1h 15min",
-      status: "ACTIVO"
+      status: "ACTIVO",
+      notes: ""
     });
     setBirthDay("15");
     setBirthMonth("06");
@@ -797,7 +799,8 @@ export function ClientDetailView({
       birthDate: currentPet.birthDate || "2024-06-15",
       avatarUrl: currentPet.avatarUrl || PRESET_PET_AVATARS[0],
       avgDuration: currentPet.avgDuration || "1h 15min",
-      status: currentPet.status || "ACTIVO"
+      status: currentPet.status || "ACTIVO",
+      notes: currentPet.notes || ""
     });
 
     const parsedDate = parseExistingBirthDate(currentPet.birthDate);
@@ -851,6 +854,7 @@ export function ClientDetailView({
         avatarUrl: petForm.avatarUrl,
         avgDuration: computedDuration,
         status: petForm.status,
+        notes: petForm.notes.trim(),
         lastVisitDate: "Hoy",
         lastVisitService: "Apertura de ficha boutique",
         history: [
@@ -884,7 +888,8 @@ export function ClientDetailView({
         birthDate: computedBirthDate,
         avatarUrl: petForm.avatarUrl,
         avgDuration: computedDuration,
-        status: petForm.status
+        status: petForm.status,
+        notes: petForm.notes.trim()
       };
       if (onSavePet) {
         await onSavePet(updatedPet, currentOwner.id);
@@ -1403,6 +1408,25 @@ export function ClientDetailView({
 
                   {/* LAST VISIT STATS */}
                   </div>
+
+                 {/* NOTAS */}
+                 <div className="text-left pt-2 space-y-3">
+                   <div className="border-b border-outline-variant/20 pb-3">
+                     <h4 className="font-serif text-lg font-bold text-primary">
+                       Notas
+                     </h4>
+                   </div>
+                   {currentPet.notes ? (
+                     <p className="bg-ivory-base border border-outline-variant/30 rounded-2xl p-4 text-xs text-on-surface leading-relaxed whitespace-pre-wrap">
+                       {currentPet.notes}
+                     </p>
+                   ) : (
+                     <p className="text-xs text-outline text-center py-4 italic">
+                       Sin notas registradas para esta mascota.
+                     </p>
+                   )}
+                 </div>
+
                  {/* HISTORIAL DE SERVICIOS */}
                  {combinedHistory.length > 0 && (
                    <div className="text-left pt-2 space-y-4">
@@ -1893,6 +1917,17 @@ export function ClientDetailView({
                 </div>
 
                 </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-primary">Notas</label>
+                <textarea
+                  value={petForm.notes}
+                  onChange={(e) => setPetForm({ ...petForm, notes: e.target.value })}
+                  placeholder="Añade cualquier detalle o nota sobre la mascota..."
+                  rows={3}
+                  className="w-full px-4 py-2 text-xs border border-outline-variant/40 rounded-2xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
+                />
+              </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-primary block">
