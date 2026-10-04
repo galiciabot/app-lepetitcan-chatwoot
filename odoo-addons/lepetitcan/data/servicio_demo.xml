@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="lpc_svc_bano" model="lepetitcan.servicio">
+            <field name="name">Baño</field>
+            <field name="codigo">baño</field>
+            <field name="duracion_por_tamano">{"Toy":90,"Pequeño":90,"Mediano":90,"Grande":120,"Gigante":120,"Pequeño Diamante":90}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+        <record id="lpc_svc_bano_arreglo" model="lepetitcan.servicio">
+            <field name="name">Baño + Arreglo</field>
+            <field name="codigo">baño_arreglo</field>
+            <field name="duracion_por_tamano">{"Toy":90,"Pequeño":90,"Mediano":90,"Grande":120,"Gigante":120,"Pequeño Diamante":90}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+        <record id="lpc_svc_corte_mixto" model="lepetitcan.servicio">
+            <field name="name">Corte Mixto</field>
+            <field name="codigo">corte_mixto</field>
+            <field name="duracion_por_tamano">{"Toy":120,"Pequeño":120,"Mediano":120,"Grande":120,"Gigante":120,"Pequeño Diamante":120}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+        <record id="lpc_svc_corte_tijera" model="lepetitcan.servicio">
+            <field name="name">Corte Tijera</field>
+            <field name="codigo">corte_tijera</field>
+            <field name="duracion_por_tamano">{"Toy":120,"Pequeño":120,"Mediano":120,"Grande":120,"Gigante":120,"Pequeño Diamante":120}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+        <record id="lpc_svc_strippin" model="lepetitcan.servicio">
+            <field name="name">Strippin (Pelo Duro)</field>
+            <field name="codigo">strippin</field>
+            <field name="duracion_por_tamano">{"Toy":120,"Pequeño":120,"Mediano":120,"Grande":120,"Gigante":120,"Pequeño Diamante":120}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+        <record id="lpc_svc_deslanado" model="lepetitcan.servicio">
+            <field name="name">Deslanado</field>
+            <field name="codigo">deslanado</field>
+            <field name="duracion_por_tamano">{"Toy":120,"Pequeño":120,"Mediano":120,"Grande":120,"Gigante":120,"Pequeño Diamante":120}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+        <record id="lpc_svc_unas" model="lepetitcan.servicio">
+            <field name="name">Uñas</field>
+            <field name="codigo">uñas</field>
+            <field name="duracion_por_tamano">{"Toy":15,"Pequeño":15,"Mediano":15,"Grande":15,"Gigante":15,"Pequeño Diamante":15}</field>
+            <field name="buffer_minutos">0</field>
+        </record>
+    </data>
+</odoo>

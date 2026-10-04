@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_lepetitcan_servicio_user,lepetitcan.servicio.user,model_lepetitcan_servicio,base.group_user,1,1,1,0
+access_lepetitcan_trabajador_user,lepetitcan.trabajador.user,model_lepetitcan_trabajador,base.group_user,1,1,1,0
+access_lepetitcan_bloqueo_user,lepetitcan.bloqueo.user,model_lepetitcan_bloqueo,base.group_user,1,1,1,0

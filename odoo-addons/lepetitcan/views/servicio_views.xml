@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_lpc_root" name="Le Petit Can" sequence="90"/>
+
+    <record id="view_lpc_servicio_tree" model="ir.ui.view">
+        <field name="name">lepetitcan.servicio.tree</field>
+        <field name="model">lepetitcan.servicio</field>
+        <field name="arch" type="xml">
+            <tree string="Servicios">
+                <field name="name"/>
+                <field name="codigo"/>
+                <field name="buffer_minutos"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lpc_servicio_form" model="ir.ui.view">
+        <field name="name">lepetitcan.servicio.form</field>
+        <field name="model">lepetitcan.servicio</field>
+        <field name="arch" type="xml">
+            <form string="Servicio">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <field name="codigo"/>
+                        <field name="buffer_minutos"/>
+                        <field name="active"/>
+                    </group>
+                    <group string="Duración por tamaño (minutos)">
+                        <field name="duracion_por_tamano" colspan="2"/>
+                    </group>
+                    <field name="trabajador_ids" widget="many2many_tags"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_lpc_servicio" model="ir.actions.act_window">
+        <field name="name">Servicios</field>
+        <field name="res_model">lepetitcan.servicio</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_lpc_servicio" name="Servicios" action="action_lpc_servicio" parent="menu_lpc_root"/>
+</odoo>

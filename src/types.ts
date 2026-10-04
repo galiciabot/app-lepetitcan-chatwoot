@@ -20,6 +20,21 @@ export interface Appointment {
   ownerZipCode?: string;
   ownerInstagram?: string;
   ownerFacebook?: string;
+  ownerId?: string;
+  petId?: string;
+  serviceId?: string;
+  serviceCode?: string;
+  trabajadorId?: string;
+  duracionTotalMin?: number;
+}
+
+export interface OdooService {
+  id: string;
+  codigo: string;
+  name: string;
+  duracionPorTamano: string;
+  bufferMinutos: number;
+  activo: boolean;
 }
 
 export interface VisitHistory {

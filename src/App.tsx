@@ -1748,6 +1748,19 @@ export default function App() {
       } catch (err) {
         console.warn("[Odoo] Appointments load failed:", err);
       }
+      try {
+        const svcs = await odooService.getServices();
+        console.log("[Odoo] Services loaded:", svcs?.length, "items");
+        if (svcs?.length) {
+          const map: Record<string, string> = {};
+          svcs.forEach((s) => {
+            if (s.codigo && s.id) map[s.codigo] = String(s.id);
+          });
+          setServiceIdByCode(map);
+        }
+      } catch (err) {
+        console.warn("[Odoo] Services load failed:", err);
+      }
     }
     loadFromOdoo();
   }, []);
@@ -1790,6 +1803,8 @@ export default function App() {
       return [];
     }
   });
+
+  const [serviceIdByCode, setServiceIdByCode] = useState<Record<string, string>>({});
 
   // Administrative action handlers with localStorage persistence
   const handleSaveService = async (srv: Service) => {
@@ -1970,14 +1985,30 @@ export default function App() {
       const dateStr = appointment.date || new Date().toISOString().slice(0, 10);
       const timeStr = appointment.rawTime || appointment.time || "09:00";
       const start = `${dateStr} ${timeStr}`;
-      const endHour = String(Math.min(23, parseInt(timeStr.split(":")[0]) + 2)).padStart(2, "0");
-       const end = `${dateStr} ${endHour}:${timeStr.split(":")[1] || "00"}`;
+      const duracionTotalMin = appointment.duracionTotalMin || 90;
+      const [hh, mm] = timeStr.split(":");
+      const startMin = parseInt(hh, 10) * 60 + parseInt(mm || "0", 10);
+      const endMin = startMin + duracionTotalMin;
+      const end = `${dateStr} ${String(Math.min(23, Math.floor(endMin / 60))).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+
+      const servicioIdNum = appointment.serviceCode && serviceIdByCode[appointment.serviceCode]
+        ? Number(serviceIdByCode[appointment.serviceCode])
+        : appointment.serviceId
+          ? Number(appointment.serviceId)
+          : undefined;
+      const mascotaIdNum = /^\d+$/.test(appointment.petId || "") ? Number(appointment.petId) : undefined;
+      const partnerIdNum = /^\d+$/.test(appointment.ownerId || "") ? Number(appointment.ownerId) : undefined;
+
       await odooService.createAppointment({
-        name: `${appointment.dogName} — ${appointment.service}`,
+        name: appointment.dogName || appointment.service,
         start,
         stop: end,
-        duration: 90,
-        partner_id: appointment.ownerPhone ? undefined : undefined,
+        duration: Math.round((duracionTotalMin / 60) * 100) / 100,
+        partner_id: partnerIdNum,
+        lpc_servicio_id: servicioIdNum,
+        lpc_mascota_id: mascotaIdNum,
+        lpc_estado: odooService.estadoLabelToKey(appointment.status),
+        lpc_duracion_total_min: duracionTotalMin,
         description: `Cliente: ${appointment.ownerName} | Tel: ${appointment.ownerPhone || ""} | Email: ${appointment.ownerEmail || ""}`,
       });
     } catch (err) {

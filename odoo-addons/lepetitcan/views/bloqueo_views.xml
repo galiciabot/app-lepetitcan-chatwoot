@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_lpc_bloqueo_tree" model="ir.ui.view">
+        <field name="name">lepetitcan.bloqueo.tree</field>
+        <field name="model">lepetitcan.bloqueo</field>
+        <field name="arch" type="xml">
+            <tree string="Bloqueos">
+                <field name="fecha_inicio"/>
+                <field name="fecha_fin"/>
+                <field name="hora_inicio"/>
+                <field name="hora_fin"/>
+                <field name="trabajador_id"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lpc_bloqueo_form" model="ir.ui.view">
+        <field name="name">lepetitcan.bloqueo.form</field>
+        <field name="model">lepetitcan.bloqueo</field>
+        <field name="arch" type="xml">
+            <form string="Bloqueo">
+                <sheet>
+                    <label for="name" string="Título"/>
+                    <h1><field name="name"/></h1>
+                    <group>
+                        <field name="fecha_inicio"/>
+                        <field name="fecha_fin"/>
+                        <field name="hora_inicio"/>
+                        <field name="hora_fin"/>
+                        <field name="trabajador_id" options="{'no_create': True}"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_lpc_bloqueo" model="ir.actions.act_window">
+        <field name="name">Bloqueos</field>
+        <field name="res_model">lepetitcan.bloqueo</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_lpc_bloqueo" name="Bloqueos" action="action_lpc_bloqueo" parent="menu_lpc_root"/>
+</odoo>

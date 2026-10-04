@@ -340,6 +340,12 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
     const periodType = parseInt(selectedTime.split(":")[0]) < 12 ? "AM" : "PM";
     const fullName = `${ownerFirstName.trim()} ${ownerLastName.trim()}`.trim();
 
+    const sizeKey = dogSize === "Pequeño Diamante" ? "Toy" : dogSize;
+    const priceInfo = selectedService.pricing[sizeKey] || selectedService.pricing["Pequeño"];
+    const duracionTotalMin = priceInfo?.durationMin;
+    const ownerSelected = selectedContactId ? (owners || []).find((o) => o.id === selectedContactId) : undefined;
+    const petSelected = ownerSelected && selectedPetIndex >= 0 ? ownerSelected.pets?.[selectedPetIndex] : undefined;
+
     const newAppointment: Appointment = {
       id: generatedId,
       time: selectedTime,
@@ -362,6 +368,10 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
       ownerZipCode: ownerZipCode.trim(),
       ownerInstagram: ownerInstagram.trim(),
       ownerFacebook: ownerFacebook.trim(),
+      ownerId: selectedContactId || undefined,
+      petId: petSelected?.id,
+      serviceCode: selectedService.id,
+      duracionTotalMin,
     };
 
     try {

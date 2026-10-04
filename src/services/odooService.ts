@@ -1,4 +1,4 @@
-import { Owner, Pet, Appointment, VisitHistory } from "../types";
+import { Owner, Pet, Appointment, VisitHistory, OdooService } from "../types";
 
 const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
@@ -161,6 +161,12 @@ export async function deletePet(id: number | string): Promise<any> {
   return post<any>("/delete-pet", { id: String(id) });
 }
 
+// ========== SERVICES ==========
+
+export async function getServices(): Promise<OdooService[]> {
+  return get<OdooService[]>("/get-services");
+}
+
 // ========== APPOINTMENTS ==========
 
 export interface OdooAppointment {
@@ -170,8 +176,17 @@ export interface OdooAppointment {
   end: string;
   duration: number;
   partnerName: string;
+  partnerId?: number | false;
+  dogName?: string;
+  mascotaId?: number | false;
+  serviceName?: string;
+  servicioId?: number | false;
+  trabajadorId?: number | false;
+  trabajadorName?: string;
+  estado?: string;
+  duracionTotalMin?: number;
   description: string;
-  status: string;
+  status?: string;
 }
 
 export async function getAppointments(): Promise<OdooAppointment[]> {
@@ -184,9 +199,27 @@ export async function createAppointment(data: {
   stop: string;
   duration?: number;
   partner_id?: number;
+  lpc_servicio_id?: number;
+  lpc_trabajador_id?: number;
+  lpc_mascota_id?: number;
+  lpc_estado?: string;
+  lpc_duracion_total_min?: number;
   description?: string;
 }): Promise<any> {
-  return post<any>("/create-appointment", data);
+  const body: Record<string, any> = {
+    name: data.name,
+    start: data.start,
+    stop: data.stop,
+    partner_id: data.partner_id ?? false,
+    lpc_servicio_id: data.lpc_servicio_id ?? false,
+    lpc_trabajador_id: data.lpc_trabajador_id ?? false,
+    lpc_mascota_id: data.lpc_mascota_id ?? false,
+    lpc_estado: data.lpc_estado ?? "pendiente",
+  };
+  if (data.duration != null) body.duration = data.duration;
+  if (data.lpc_duracion_total_min != null) body.lpc_duracion_total_min = data.lpc_duracion_total_min;
+  if (data.description != null) body.description = data.description;
+  return post<any>("/create-appointment", body);
 }
 
 // ========== PAYMENTS ==========
@@ -247,18 +280,50 @@ export function partnerToOwner(raw: RawPartner): Owner {
   };
 }
 
+const ESTADO_KEY_TO_LABEL: Record<string, string> = {
+  pendiente: "Pendiente",
+  confirmada: "Confirmada",
+  en_camino: "En camino",
+  en_proceso: "En Proceso",
+  finalizada: "Finalizada",
+  anulada: "Anulada",
+};
+
+const ESTADO_LABEL_TO_KEY: Record<string, string> = {
+  Pendiente: "pendiente",
+  Confirmada: "confirmada",
+  Confirmado: "confirmada",
+  "En camino": "en_camino",
+  "En Camino": "en_camino",
+  "En Proceso": "en_proceso",
+  Finalizada: "finalizada",
+  Finalizado: "finalizada",
+  Anulada: "anulada",
+  Anulado: "anulada",
+};
+
+export function estadoLabelToKey(label?: string): string {
+  return label ? (ESTADO_LABEL_TO_KEY[label] || "pendiente") : "pendiente";
+}
+
 export function appointmentToAppointment(raw: OdooAppointment): Appointment {
+  const estado = raw.estado || raw.status || "";
   return {
     id: String(raw.id),
     time: raw.start?.slice(11, 16) || "00:00",
     period: parseInt(raw.start?.slice(11, 13) || "0") < 12 ? "AM" as const : "PM" as const,
-    dogName: raw.title || "",
+    dogName: raw.dogName || raw.title || "",
     breed: "",
     size: "Mediano" as any,
     ownerName: raw.partnerName || "",
-    service: raw.title || "",
-    status: raw.status === "open" ? "Confirmada" : raw.status,
+    service: raw.serviceName || raw.title || "",
+    status: ESTADO_KEY_TO_LABEL[estado] || estado || "Pendiente",
     rawTime: raw.start?.slice(11, 16) || "00:00",
     date: raw.start?.slice(0, 10) || "",
+    ownerId: raw.partnerId ? String(raw.partnerId) : undefined,
+    petId: raw.mascotaId ? String(raw.mascotaId) : undefined,
+    serviceId: raw.servicioId ? String(raw.servicioId) : undefined,
+    trabajadorId: raw.trabajadorId ? String(raw.trabajadorId) : undefined,
+    duracionTotalMin: raw.duracionTotalMin || undefined,
   };
 }
