@@ -11,6 +11,7 @@
     'data': [
         'security/ir.model.access.csv',
         'data/servicio_demo.xml',
+        'data/trabajador_demo.xml',
         'views/servicio_views.xml',
         'views/trabajador_views.xml',
         'views/bloqueo_views.xml',

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="lpc_trab_iliana" model="lepetitcan.trabajador">
+            <field name="name">Iliana</field>
+            <field name="horario_laboral">{"lunes":["09:00","18:00"],"martes":["09:00","18:00"],"miércoles":["09:00","18:00"],"jueves":["09:00","18:00"],"viernes":["09:00","18:00"],"sábado":["09:00","14:00"]}</field>
+        </record>
+        <record id="lpc_trab_marco" model="lepetitcan.trabajador">
+            <field name="name">Marco</field>
+            <field name="horario_laboral">{"lunes":["09:00","18:00"],"martes":["09:00","18:00"],"miércoles":["09:00","18:00"],"jueves":["09:00","18:00"],"viernes":["09:00","18:00"]}</field>
+        </record>
+    </data>
+</odoo>

@@ -1,4 +1,4 @@
-import { Owner, Pet, Appointment, VisitHistory, OdooService } from "../types";
+import { Owner, Pet, Appointment, VisitHistory, OdooService, Disponibilidad } from "../types";
 
 const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
@@ -165,6 +165,16 @@ export async function deletePet(id: number | string): Promise<any> {
 
 export async function getServices(): Promise<OdooService[]> {
   return get<OdooService[]>("/get-services");
+}
+
+export async function getDisponibilidad(data: {
+  fecha: string;
+  servicioId: number | string;
+  tamano: string;
+  ajustesMin?: number;
+  trabajadorId?: number | string | null;
+}): Promise<Disponibilidad> {
+  return post<Disponibilidad>("/get-disponibilidad", data);
 }
 
 // ========== APPOINTMENTS ==========

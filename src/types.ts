@@ -37,6 +37,22 @@ export interface OdooService {
   activo: boolean;
 }
 
+export interface Hueco {
+  inicio: string;
+  fin: string;
+}
+
+export interface TrabajadorDisponibilidad {
+  id: string | number;
+  nombre: string;
+  huecos: Hueco[];
+}
+
+export interface Disponibilidad {
+  duracionTotalMin: number;
+  trabajadores: TrabajadorDisponibilidad[];
+}
+
 export interface VisitHistory {
   id: string;
   date: string;
