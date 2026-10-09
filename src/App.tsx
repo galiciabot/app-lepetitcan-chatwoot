@@ -2052,6 +2052,110 @@ export default function App() {
       localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
       return updated;
     });
+    if (/^\d+$/.test(appointmentId)) {
+      try {
+        await odooService.updateAppointment(appointmentId, {
+          lpc_estado: odooService.estadoLabelToKey(newStatus),
+        });
+      } catch (err) {
+        console.warn("[App] Odoo appointment status update failed:", err);
+      }
+    }
+  };
+
+  const handleDeleteAppointment = async (appointmentId: string) => {
+    setAppointments((prev) => {
+      const updated = prev.map((a) =>
+        a.id === appointmentId ? { ...a, status: "Anulada" } : a
+      );
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
+      return updated;
+    });
+    if (/^\d+$/.test(appointmentId)) {
+      try {
+        await odooService.updateAppointment(appointmentId, { lpc_estado: "anulada" });
+      } catch (err) {
+        console.warn("[App] Odoo appointment delete (anular) failed:", err);
+      }
+    }
+  };
+
+  const toMinOfDay = (hhmm: string): number => {
+    const [h, m] = hhmm.split(":").map((n) => parseInt(n, 10));
+    return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+  };
+
+  const handleMoveAppointment = async (
+    appointmentId: string,
+    target: { fecha: string; hora: string; trabajadorId?: string; trabajadorName?: string }
+  ) => {
+    const appt = appointments.find((a) => a.id === appointmentId);
+    if (!appt) return;
+    const duracionMin = appt.duracionTotalMin || 90;
+    const dateStr = target.fecha;
+    const timeStr = target.hora;
+    const startMin = toMinOfDay(timeStr);
+    const endMin = startMin + duracionMin;
+    const start = `${dateStr} ${timeStr}`;
+    const stop = `${dateStr} ${String(Math.min(23, Math.floor(endMin / 60))).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+
+    const workerPicked = target.trabajadorId != null && target.trabajadorId !== "";
+    if (workerPicked) {
+      try {
+        const disp = await odooService.getDisponibilidad({
+          fecha: dateStr,
+          servicioId: appt.serviceId || appt.serviceCode || 1,
+          tamano: appt.size || "Mediano",
+          trabajadorId: target.trabajadorId,
+        });
+        const worker = disp.trabajadores.find((w) => String(w.id) === String(target.trabajadorId));
+        if (!worker) {
+          alert("El trabajador seleccionado no tiene disponibilidad ese día.");
+          return;
+        }
+        const cabe = worker.huecos.some(
+          (h) => startMin >= toMinOfDay(h.inicio) && endMin <= toMinOfDay(h.fin)
+        );
+        if (!cabe) {
+          alert("Ese hueco ya está ocupado para ese trabajador. Elige otro horario.");
+          return;
+        }
+      } catch (err) {
+        console.warn("[App] getDisponibilidad failed during move; proceeding:", err);
+      }
+    }
+
+    setAppointments((prev) => {
+      const updated = prev.map((a) =>
+        a.id === appointmentId
+          ? {
+              ...a,
+              date: dateStr,
+              time: timeStr,
+              rawTime: timeStr,
+              period: (parseInt(timeStr.split(":")[0], 10) < 12 ? "AM" : "PM") as "AM" | "PM",
+              trabajadorId: workerPicked ? target.trabajadorId : a.trabajadorId,
+              trabajadorName: workerPicked ? target.trabajadorName : a.trabajadorName,
+              duracionTotalMin: duracionMin,
+            }
+          : a
+      );
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
+      return updated;
+    });
+
+    if (/^\d+$/.test(appointmentId)) {
+      try {
+        await odooService.updateAppointment(appointmentId, {
+          start,
+          stop,
+          lpc_trabajador_id: workerPicked ? Number(target.trabajadorId) : undefined,
+          lpc_duracion_total_min: duracionMin,
+        });
+      } catch (err) {
+        console.warn("[App] Odoo appointment move failed:", err);
+      }
+    }
   };
 
 
@@ -2421,10 +2525,13 @@ export default function App() {
             {currentView === "calendar" && (
               <CalendarView
                 appointments={appointments}
+                owners={owners}
                 onNavigate={setView}
                 userRole={session.role}
                 onSelectClientDetail={handleSelectClientDetail}
                 onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
+                onDeleteAppointment={handleDeleteAppointment}
+                onMoveAppointment={handleMoveAppointment}
               />
             )}
 

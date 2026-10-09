@@ -25,6 +25,7 @@ export interface Appointment {
   serviceId?: string;
   serviceCode?: string;
   trabajadorId?: string;
+  trabajadorName?: string;
   duracionTotalMin?: number;
 }
 
