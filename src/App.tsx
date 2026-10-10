@@ -1650,8 +1650,9 @@ export default function App() {
     return localStorage.getItem("le_petit_can_suspended") === "true";
   });
 
-  // LOPD Compliant Idle autolock state (600s = 10 minutes)
-  const [idleCountdown, setIdleCountdown] = useState<number>(600);
+  // LOPD Compliant Idle autolock: only a ref tracks activity here so App does
+  // not re-render every second (a per-second state update would close any open
+  // native <select> dropdown via React re-applying its value).
   const lastActivityRef = useRef<number>(Date.now());
 
   const [currentView, setView] = useState<string>(() => {
@@ -1669,7 +1670,6 @@ export default function App() {
   const handleLoginSuccess = (newSession: UserSession) => {
     setSession(newSession);
     localStorage.setItem("le_petit_can_session", JSON.stringify(newSession));
-    setIdleCountdown(600); // Reset timer
     if (newSession.role === "administrador") {
       setView("saas_control");
     } else {
@@ -1689,15 +1689,14 @@ export default function App() {
 
     lastActivityRef.current = Date.now();
 
-    // Tick down
+    // Tick down. No state update here: only auto-logout when the deadline
+    // is reached. The visible countdown lives in SecurityLopdView.
     const interval = setInterval(() => {
       const elapsedSec = Math.floor((Date.now() - lastActivityRef.current) / 1000);
       const remaining = Math.max(0, 600 - elapsedSec);
       if (remaining <= 0) {
         lastActivityRef.current = Date.now();
         handleLogout();
-      } else {
-        setIdleCountdown(remaining);
       }
     }, 1000);
 
@@ -2619,7 +2618,6 @@ onAppointmentCreated={handleBookingCreated}
                 userRole={session.role}
                 userName={session.name}
                 onLogout={handleLogout}
-                idleCountdown={idleCountdown}
               />
             )}
           </main>

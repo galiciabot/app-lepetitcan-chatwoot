@@ -1,14 +1,43 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { UserRole } from "../types";
 
 interface SecurityLopdViewProps {
   userRole: UserRole;
   userName: string;
   onLogout: () => void;
-  idleCountdown: number; // passed down or handled locally
 }
 
-export function SecurityLopdView({ userRole, userName, onLogout, idleCountdown }: SecurityLopdViewProps) {
+export function SecurityLopdView({ userRole, userName, onLogout }: SecurityLopdViewProps) {
+  // Local idle countdown (600s = 10 min) so App does not re-render the whole
+  // tree every second — which would close every open native <select> dropdown.
+  const [idleCountdown, setIdleCountdown] = useState<number>(600);
+  const lastActivityRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    lastActivityRef.current = Date.now();
+
+    const interval = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - lastActivityRef.current) / 1000);
+      setIdleCountdown(Math.max(0, 600 - elapsedSec));
+    }, 1000);
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    window.addEventListener("mousemove", resetTimer);
+    window.addEventListener("keydown", resetTimer);
+    window.addEventListener("mousedown", resetTimer);
+    window.addEventListener("touchstart", resetTimer);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("mousemove", resetTimer);
+      window.removeEventListener("keydown", resetTimer);
+      window.removeEventListener("mousedown", resetTimer);
+      window.removeEventListener("touchstart", resetTimer);
+    };
+  }, []);
   // Mock live audit trails conforming to Spanish LOPD Audit Log requirements
   const [auditLogs, setAuditLogs] = useState([
     { id: "log-1", time: "Hace 2 min", user: "Soporte Técnico", action: "Verificación de integridad HTTPS-SSL", ip: "85.122.34.*", lvl: "Normal" },
