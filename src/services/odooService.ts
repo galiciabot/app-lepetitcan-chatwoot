@@ -233,30 +233,30 @@ export async function createAppointment(data: {
 }
 
 export async function updateAppointment(id: number | string, data: {
-  name?: string;
-  start?: string;
-  stop?: string;
+  name: string;
+  start: string;
+  stop: string;
   duration?: number;
-  partner_id?: number;
-  lpc_servicio_id?: number;
-  lpc_trabajador_id?: number;
-  lpc_mascota_id?: number;
+  partner_id?: number | false;
+  lpc_servicio_id?: number | false;
+  lpc_trabajador_id?: number | false;
+  lpc_mascota_id?: number | false;
   lpc_estado?: string;
   lpc_duracion_total_min?: number;
-  description?: string;
 }): Promise<any> {
-  const body: Record<string, any> = { id: String(id) };
-  if (data.name != null) body.name = data.name;
-  if (data.start != null) body.start = data.start;
-  if (data.stop != null) body.stop = data.stop;
+  const body: Record<string, any> = {
+    id: String(id),
+    name: data.name,
+    start: data.start,
+    stop: data.stop,
+    partner_id: data.partner_id ?? false,
+    lpc_servicio_id: data.lpc_servicio_id ?? false,
+    lpc_trabajador_id: data.lpc_trabajador_id ?? false,
+    lpc_mascota_id: data.lpc_mascota_id ?? false,
+    lpc_estado: data.lpc_estado ?? "pendiente",
+  };
   if (data.duration != null) body.duration = data.duration;
-  if (data.partner_id != null) body.partner_id = data.partner_id;
-  if (data.lpc_servicio_id != null) body.lpc_servicio_id = data.lpc_servicio_id;
-  if (data.lpc_trabajador_id != null) body.lpc_trabajador_id = data.lpc_trabajador_id;
-  if (data.lpc_mascota_id != null) body.lpc_mascota_id = data.lpc_mascota_id;
-  if (data.lpc_estado != null) body.lpc_estado = data.lpc_estado;
   if (data.lpc_duracion_total_min != null) body.lpc_duracion_total_min = data.lpc_duracion_total_min;
-  if (data.description != null) body.description = data.description;
   return post<any>("/update-appointment", body);
 }
 

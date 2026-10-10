@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { DesignTokens, ScreenList, AssetsList } from "./tokens";
 import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet } from "./types";
 
@@ -1652,6 +1652,7 @@ export default function App() {
 
   // LOPD Compliant Idle autolock state (600s = 10 minutes)
   const [idleCountdown, setIdleCountdown] = useState<number>(600);
+  const lastActivityRef = useRef<number>(Date.now());
 
   const [currentView, setView] = useState<string>(() => {
     // If logged in as admin, default to saas_control, otherwise to dashboard
@@ -1686,20 +1687,23 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
 
+    lastActivityRef.current = Date.now();
+
     // Tick down
     const interval = setInterval(() => {
-      setIdleCountdown((prev) => {
-        if (prev <= 1) {
-          handleLogout();
-          return 600;
-        }
-        return prev - 1;
-      });
+      const elapsedSec = Math.floor((Date.now() - lastActivityRef.current) / 1000);
+      const remaining = Math.max(0, 600 - elapsedSec);
+      if (remaining <= 0) {
+        lastActivityRef.current = Date.now();
+        handleLogout();
+      } else {
+        setIdleCountdown(remaining);
+      }
     }, 1000);
 
-    // Reset countdown on client-side interaction
+    // Reset countdown on client-side interaction (no state update, just a ref)
     const resetTimer = () => {
-      setIdleCountdown(600);
+      lastActivityRef.current = Date.now();
     };
 
     window.addEventListener("mousemove", resetTimer);
@@ -2044,40 +2048,58 @@ export default function App() {
     }
   };
 
-  const handleUpdateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
-    setAppointments((prev) => {
-      const updated = prev.map((a) =>
-        a.id === appointmentId ? { ...a, status: newStatus } : a
-      );
-      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
-      return updated;
-    });
-    if (/^\d+$/.test(appointmentId)) {
-      try {
-        await odooService.updateAppointment(appointmentId, {
-          lpc_estado: odooService.estadoLabelToKey(newStatus),
-        });
-      } catch (err) {
-        console.warn("[App] Odoo appointment status update failed:", err);
-      }
+  const buildAppointmentPayload = (appt: Appointment) => {
+    const numOrFalse = (s?: string): number | false => (/^\d+$/.test(s || "") ? Number(s) : false);
+    const dateStr = appt.date || new Date().toISOString().slice(0, 10);
+    const timeStr = appt.rawTime || appt.time || "09:00";
+    const duracionMin = appt.duracionTotalMin || 90;
+    const [hh, mm] = timeStr.split(":");
+    const startMin = parseInt(hh, 10) * 60 + parseInt(mm || "0", 10);
+    const endMin = startMin + duracionMin;
+    const stop = `${dateStr} ${String(Math.min(23, Math.floor(endMin / 60))).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+    return {
+      name: appt.dogName || appt.service || "Cita",
+      start: `${dateStr} ${timeStr}`,
+      stop,
+      duration: Math.round((duracionMin / 60) * 100) / 100,
+      partner_id: numOrFalse(appt.ownerId),
+      lpc_servicio_id: numOrFalse(appt.serviceId),
+      lpc_trabajador_id: numOrFalse(appt.trabajadorId),
+      lpc_mascota_id: numOrFalse(appt.petId),
+      lpc_estado: odooService.estadoLabelToKey(appt.status),
+      lpc_duracion_total_min: duracionMin,
+    };
+  };
+
+  const persistAppointment = async (appt: Appointment) => {
+    if (!/^\d+$/.test(appt.id)) return;
+    try {
+      await odooService.updateAppointment(appt.id, buildAppointmentPayload(appt));
+    } catch (err) {
+      console.warn("[App] Odoo appointment update failed:", err);
     }
   };
 
-  const handleDeleteAppointment = async (appointmentId: string) => {
+  const handleUpdateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
+    const current = appointments.find((a) => a.id === appointmentId);
+    const updated = current ? { ...current, status: newStatus } : null;
     setAppointments((prev) => {
-      const updated = prev.map((a) =>
-        a.id === appointmentId ? { ...a, status: "Anulada" } : a
-      );
-      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
-      return updated;
+      const next = prev.map((a) => (a.id === appointmentId ? { ...a, status: newStatus } : a));
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(next));
+      return next;
     });
-    if (/^\d+$/.test(appointmentId)) {
-      try {
-        await odooService.updateAppointment(appointmentId, { lpc_estado: "anulada" });
-      } catch (err) {
-        console.warn("[App] Odoo appointment delete (anular) failed:", err);
-      }
-    }
+    if (updated) await persistAppointment(updated);
+  };
+
+  const handleDeleteAppointment = async (appointmentId: string) => {
+    const current = appointments.find((a) => a.id === appointmentId);
+    const updated = current ? { ...current, status: "Anulada" } : null;
+    setAppointments((prev) => {
+      const next = prev.map((a) => (a.id === appointmentId ? { ...a, status: "Anulada" } : a));
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(next));
+      return next;
+    });
+    if (updated) await persistAppointment(updated);
   };
 
   const toMinOfDay = (hhmm: string): number => {
@@ -2096,8 +2118,6 @@ export default function App() {
     const timeStr = target.hora;
     const startMin = toMinOfDay(timeStr);
     const endMin = startMin + duracionMin;
-    const start = `${dateStr} ${timeStr}`;
-    const stop = `${dateStr} ${String(Math.min(23, Math.floor(endMin / 60))).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
 
     const workerPicked = target.trabajadorId != null && target.trabajadorId !== "";
     if (workerPicked) {
@@ -2125,37 +2145,24 @@ export default function App() {
       }
     }
 
+    const updated: Appointment = {
+      ...appt,
+      date: dateStr,
+      time: timeStr,
+      rawTime: timeStr,
+      period: (parseInt(timeStr.split(":")[0], 10) < 12 ? "AM" : "PM") as "AM" | "PM",
+      trabajadorId: workerPicked ? target.trabajadorId : appt.trabajadorId,
+      trabajadorName: workerPicked ? target.trabajadorName : appt.trabajadorName,
+      duracionTotalMin: duracionMin,
+    };
+
     setAppointments((prev) => {
-      const updated = prev.map((a) =>
-        a.id === appointmentId
-          ? {
-              ...a,
-              date: dateStr,
-              time: timeStr,
-              rawTime: timeStr,
-              period: (parseInt(timeStr.split(":")[0], 10) < 12 ? "AM" : "PM") as "AM" | "PM",
-              trabajadorId: workerPicked ? target.trabajadorId : a.trabajadorId,
-              trabajadorName: workerPicked ? target.trabajadorName : a.trabajadorName,
-              duracionTotalMin: duracionMin,
-            }
-          : a
-      );
-      localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
-      return updated;
+      const next = prev.map((a) => (a.id === appointmentId ? updated : a));
+      localStorage.setItem("le_petit_can_appointments", JSON.stringify(next));
+      return next;
     });
 
-    if (/^\d+$/.test(appointmentId)) {
-      try {
-        await odooService.updateAppointment(appointmentId, {
-          start,
-          stop,
-          lpc_trabajador_id: workerPicked ? Number(target.trabajadorId) : undefined,
-          lpc_duracion_total_min: duracionMin,
-        });
-      } catch (err) {
-        console.warn("[App] Odoo appointment move failed:", err);
-      }
-    }
+    await persistAppointment(updated);
   };
 
 
