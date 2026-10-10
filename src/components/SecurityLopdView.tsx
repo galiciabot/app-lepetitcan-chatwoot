@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { UserRole } from "../types";
 
 interface SecurityLopdViewProps {
@@ -8,36 +8,6 @@ interface SecurityLopdViewProps {
 }
 
 export function SecurityLopdView({ userRole, userName, onLogout }: SecurityLopdViewProps) {
-  // Local idle countdown (600s = 10 min) so App does not re-render the whole
-  // tree every second — which would close every open native <select> dropdown.
-  const [idleCountdown, setIdleCountdown] = useState<number>(600);
-  const lastActivityRef = useRef<number>(Date.now());
-
-  useEffect(() => {
-    lastActivityRef.current = Date.now();
-
-    const interval = setInterval(() => {
-      const elapsedSec = Math.floor((Date.now() - lastActivityRef.current) / 1000);
-      setIdleCountdown(Math.max(0, 600 - elapsedSec));
-    }, 1000);
-
-    const resetTimer = () => {
-      lastActivityRef.current = Date.now();
-    };
-
-    window.addEventListener("mousemove", resetTimer);
-    window.addEventListener("keydown", resetTimer);
-    window.addEventListener("mousedown", resetTimer);
-    window.addEventListener("touchstart", resetTimer);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("keydown", resetTimer);
-      window.removeEventListener("mousedown", resetTimer);
-      window.removeEventListener("touchstart", resetTimer);
-    };
-  }, []);
   // Mock live audit trails conforming to Spanish LOPD Audit Log requirements
   const [auditLogs, setAuditLogs] = useState([
     { id: "log-1", time: "Hace 2 min", user: "Soporte Técnico", action: "Verificación de integridad HTTPS-SSL", ip: "85.122.34.*", lvl: "Normal" },
@@ -107,9 +77,9 @@ export function SecurityLopdView({ userRole, userName, onLogout }: SecurityLopdV
         </div>
         <div className="shrink-0 z-10 flex flex-col gap-2">
           <div className="bg-white/10 border border-white/20 rounded-2xl p-3 text-center space-y-1">
-            <p className="text-[9px] uppercase tracking-widest text-secondary-fixed opacity-90 font-bold">Autocierre por Inactividad</p>
-            <p className="font-mono text-lg font-bold text-secondary-fixed">{Math.floor(idleCountdown / 60)}m {idleCountdown % 60}s</p>
-            <p className="text-[8px] text-white/70">Unattended Lockout Active</p>
+            <p className="text-[9px] uppercase tracking-widest text-secondary-fixed opacity-90 font-bold">Sesión Activa</p>
+            <p className="font-mono text-lg font-bold text-secondary-fixed">Bienvenido</p>
+            <p className="text-[8px] text-white/70">Cumplimiento LOPD</p>
           </div>
         </div>
       </div>

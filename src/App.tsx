@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { DesignTokens, ScreenList, AssetsList } from "./tokens";
 import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet } from "./types";
 
@@ -1650,11 +1650,6 @@ export default function App() {
     return localStorage.getItem("le_petit_can_suspended") === "true";
   });
 
-  // LOPD Compliant Idle autolock: only a ref tracks activity here so App does
-  // not re-render every second (a per-second state update would close any open
-  // native <select> dropdown via React re-applying its value).
-  const lastActivityRef = useRef<number>(Date.now());
-
   const [currentView, setView] = useState<string>(() => {
     // If logged in as admin, default to saas_control, otherwise to dashboard
     try {
@@ -1682,42 +1677,6 @@ export default function App() {
     localStorage.removeItem("le_petit_can_session");
     setView("dashboard");
   };
-
-  // Safe idle timer event observer
-  useEffect(() => {
-    if (!session) return;
-
-    lastActivityRef.current = Date.now();
-
-    // Tick down. No state update here: only auto-logout when the deadline
-    // is reached. The visible countdown lives in SecurityLopdView.
-    const interval = setInterval(() => {
-      const elapsedSec = Math.floor((Date.now() - lastActivityRef.current) / 1000);
-      const remaining = Math.max(0, 600 - elapsedSec);
-      if (remaining <= 0) {
-        lastActivityRef.current = Date.now();
-        handleLogout();
-      }
-    }, 1000);
-
-    // Reset countdown on client-side interaction (no state update, just a ref)
-    const resetTimer = () => {
-      lastActivityRef.current = Date.now();
-    };
-
-    window.addEventListener("mousemove", resetTimer);
-    window.addEventListener("keydown", resetTimer);
-    window.addEventListener("mousedown", resetTimer);
-    window.addEventListener("touchstart", resetTimer);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("keydown", resetTimer);
-      window.removeEventListener("mousedown", resetTimer);
-      window.removeEventListener("touchstart", resetTimer);
-    };
-  }, [session]);
 
   const handleToggleSuspension = (val: boolean) => {
     setIsSuspended(val);
