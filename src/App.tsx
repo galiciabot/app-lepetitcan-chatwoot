@@ -11,7 +11,7 @@ import { MessagingView } from "./components/MessagingView";
 import { NewAppointmentView } from "./components/NewAppointmentView";
 import { ActiveAppointmentView } from "./components/ActiveAppointmentView";
 import { BreakConfigView } from "./components/BreakConfigView";
-import { HandoffPanel } from "./components/HandoffPanel";
+
 import { BookingWidget } from "./components/BookingWidget";
 import { AdminManagementView } from "./components/AdminManagementView";
 
@@ -2647,9 +2647,7 @@ onAppointmentCreated={handleBookingCreated}
         })}
       </nav>
 
-      {/* Floater specs Handoff Panel for Antigravity & developer continuous iteration */}
-      <HandoffPanel currentView={currentView} setView={setView} />
-    </div>
+      </div>
   );
 }
 
