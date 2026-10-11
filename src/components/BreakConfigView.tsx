@@ -146,7 +146,7 @@ export function BreakConfigView({
   const defaultRaw = useMemo(() => serializeHorario(defaultParsed), [defaultParsed]);
 
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>("");
-  const [showDefault, setShowDefault] = useState(false);
+  const [defaultModalOpen, setDefaultModalOpen] = useState(false);
 
   const [workerDraft, setWorkerDraft] = useState<HorarioDraft>({});
   const [defaultDraft, setDefaultDraft] = useState<HorarioDraft>({});
@@ -192,6 +192,7 @@ export function BreakConfigView({
     setSaving(true);
     try {
       await onSaveDefaultHorario(serializeHorario(defaultDraft));
+      setDefaultModalOpen(false);
       flash("Horario predeterminado guardado.");
     } catch {
       flash("Error al guardar el horario predeterminado.");
@@ -317,37 +318,13 @@ export function BreakConfigView({
               </button>
             ))}
             <button
-              onClick={() => setShowDefault((v) => !v)}
-              className={`px-4 py-2 rounded-full font-sans text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                showDefault ? "bg-secondary text-white border-secondary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-secondary/40"
-              }`}
+              onClick={() => setDefaultModalOpen(true)}
+              className="px-4 py-2 rounded-full font-sans text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 bg-white text-on-surface-variant border-outline-variant/25 hover:border-secondary/40 hover:text-primary"
             >
               <span className="material-symbols-outlined text-[15px]">tune</span>
               Horario predeterminado
             </button>
           </div>
-
-          {/* Panel predeterminado */}
-          {showDefault && (
-            <div className="bg-surface-container-low/40 border border-secondary/20 rounded-3xl p-5 md:p-6 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-serif text-base font-bold text-primary">Horario predeterminado del salón</h3>
-                  <p className="text-[11px] text-on-surface-variant">
-                    Es la plantilla de la que parten los trabajadores nuevos y la que puedes aplicar a un trabajador concreto.
-                  </p>
-                </div>
-                <button
-                  onClick={handleSaveDefault}
-                  disabled={saving}
-                  className="px-5 py-2.5 bg-secondary hover:bg-secondary/90 text-white font-sans text-xs font-bold rounded-full cursor-pointer shrink-0"
-                >
-                  {saving ? "Guardando..." : "Guardar predeterminado"}
-                </button>
-              </div>
-              {renderEditor(defaultDraft, makeHandlers(setDefaultDraft))}
-            </div>
-          )}
 
           {selectedWorker ? (
             <div className="bg-white rounded-3xl border border-outline-variant/15 p-5 md:p-6 space-y-4 shadow-sm">
@@ -437,6 +414,34 @@ export function BreakConfigView({
             )}
           </div>
         </section>
+      )}
+
+      {/* Modal horario predeterminado */}
+      {defaultModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => setDefaultModalOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="font-serif text-lg font-bold text-primary">Horario predeterminado del salón</h3>
+                <p className="text-[11px] text-on-surface-variant">
+                  Plantilla de la que parten los trabajadores nuevos y que puedes aplicar a un trabajador concreto.
+                </p>
+              </div>
+              <button onClick={() => setDefaultModalOpen(false)} className="text-outline hover:text-primary cursor-pointer">
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {renderEditor(defaultDraft, makeHandlers(setDefaultDraft))}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button onClick={() => setDefaultModalOpen(false)} className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
+              <button onClick={handleSaveDefault} disabled={saving} className="px-6 py-2 bg-secondary hover:bg-secondary/90 text-white font-sans text-xs font-bold rounded-full cursor-pointer">
+                {saving ? "Guardando..." : "Guardar predeterminado"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal bloqueo */}
