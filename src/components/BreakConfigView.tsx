@@ -135,6 +135,7 @@ export function BreakConfigView({
 
   // Bloqueos state
   const [editingBloqueo, setEditingBloqueo] = useState<Bloqueo | null>(null);
+  const [bloqueoModalOpen, setBloqueoModalOpen] = useState(false);
   const [form, setForm] = useState<BloqueoInput>({
     name: "",
     fechaInicio: "",
@@ -150,10 +151,12 @@ export function BreakConfigView({
     setEditingBloqueo(null);
     setForm({ name: "", fechaInicio: "", fechaFin: "", horaInicio: "", horaFin: "", trabajadorId: "" });
     setAllDay(false);
+    setBloqueoModalOpen(true);
   };
 
   const openEditBloqueo = (b: Bloqueo) => {
     setEditingBloqueo(b);
+    setBloqueoModalOpen(true);
     setForm({
       name: b.name,
       fechaInicio: b.fechaInicio,
@@ -193,6 +196,7 @@ export function BreakConfigView({
       if (editingBloqueo) await onUpdateBloqueo(editingBloqueo.id, payload);
       else await onCreateBloqueo(payload);
       setEditingBloqueo(null);
+      setBloqueoModalOpen(false);
     } catch (err) {
       console.error(err);
     } finally {
@@ -395,8 +399,8 @@ export function BreakConfigView({
       )}
 
       {/* Modal bloqueo */}
-      {editingBloqueo !== null && (
-        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => setEditingBloqueo(null)}>
+      {bloqueoModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => { setBloqueoModalOpen(false); setEditingBloqueo(null); }}>
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-serif text-lg font-bold text-primary mb-4">{editingBloqueo ? "Editar bloqueo" : "Nuevo bloqueo"}</h3>
 
@@ -452,7 +456,7 @@ export function BreakConfigView({
               </div>
 
               <div className="flex justify-end gap-3 pt-3">
-                <button onClick={() => setEditingBloqueo(null)} className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
+                <button onClick={() => { setBloqueoModalOpen(false); setEditingBloqueo(null); }} className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
                 <button onClick={handleSaveBloqueo} disabled={savingBloqueo} className="px-5 py-2 bg-primary text-white font-sans text-xs font-bold rounded-full cursor-pointer">{savingBloqueo ? "Guardando..." : "Guardar"}</button>
               </div>
             </div>
