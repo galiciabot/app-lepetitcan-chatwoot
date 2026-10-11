@@ -1795,7 +1795,7 @@ export default function App() {
   const [bloqueos, setBloqueos] = useState<Bloqueo[]>([]);
 
   // Horario & bloqueos handlers (Odoo)
-  const handleSaveGlobalHorario = async (horarioGlobal: string) => {
+  const handleSaveDefaultHorario = async (horarioGlobal: string) => {
     if (!configuracion) throw new Error("No hay configuración cargada");
     await odooService.updateConfiguracion(configuracion.id, horarioGlobal);
     setConfiguracion((prev) => (prev ? { ...prev, horarioGlobal } : prev));
@@ -2615,7 +2615,7 @@ export default function App() {
                   trabajadores={trabajadores}
                   configuracion={configuracion}
                   bloqueos={bloqueos}
-                  onSaveGlobalHorario={handleSaveGlobalHorario}
+                  onSaveDefaultHorario={handleSaveDefaultHorario}
                   onSaveWorkerHorario={handleSaveWorkerHorario}
                   onCreateBloqueo={handleCreateBloqueo}
                   onUpdateBloqueo={handleUpdateBloqueo}

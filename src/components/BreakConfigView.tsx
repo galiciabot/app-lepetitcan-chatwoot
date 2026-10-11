@@ -2,54 +2,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Trabajador, Configuracion, Bloqueo, HorarioBloque } from "../types";
 import { parseHorario, serializeHorario } from "../services/odooService";
 
-const WEEKDAYS: { key: string; label: string; mini: string }[] = [
-  { key: "lunes", label: "Lunes", mini: "Lun" },
-  { key: "martes", label: "Martes", mini: "Mar" },
-  { key: "miércoles", label: "Miércoles", mini: "Mié" },
-  { key: "jueves", label: "Jueves", mini: "Jue" },
-  { key: "viernes", label: "Viernes", mini: "Vie" },
-  { key: "sábado", label: "Sábado", mini: "Sáb" },
-  { key: "domingo", label: "Domingo", mini: "Dom" },
+const WEEKDAYS: { key: string; label: string }[] = [
+  { key: "lunes", label: "Lunes" },
+  { key: "martes", label: "Martes" },
+  { key: "miércoles", label: "Miércoles" },
+  { key: "jueves", label: "Jueves" },
+  { key: "viernes", label: "Viernes" },
+  { key: "sábado", label: "Sábado" },
+  { key: "domingo", label: "Domingo" },
 ];
 
-const DAY_KEYS = WEEKDAYS.map((d) => d.key);
-
-function blocksEqual(a?: HorarioBloque[], b?: HorarioBloque[]): boolean {
-  const aa = a || [];
-  const bb = b || [];
-  if (aa.length !== bb.length) return false;
-  return aa.every((blk, i) => blk[0] === bb[i][0] && blk[1] === bb[i][1]);
-}
-
-function mergeHorario(
-  global: Record<string, HorarioBloque[]>,
-  override: Record<string, HorarioBloque[]>
-): Record<string, HorarioBloque[]> {
-  const out: Record<string, HorarioBloque[]> = {};
-  for (const day of DAY_KEYS) {
-    out[day] = Object.prototype.hasOwnProperty.call(override, day) ? (override[day] || []) : (global[day] || []);
-  }
-  return out;
-}
-
-function diffHorario(
-  effective: Record<string, HorarioBloque[]>,
-  global: Record<string, HorarioBloque[]>
-): Record<string, HorarioBloque[]> {
-  const override: Record<string, HorarioBloque[]> = {};
-  for (const day of DAY_KEYS) {
-    if (!blocksEqual(effective[day], global[day])) {
-      override[day] = effective[day] || [];
-    }
-  }
-  return override;
-}
+type HorarioDraft = Record<string, HorarioBloque[]>;
 
 interface BreakConfigViewProps {
   trabajadores: Trabajador[];
   configuracion: Configuracion | null;
   bloqueos: Bloqueo[];
-  onSaveGlobalHorario: (horarioGlobal: string) => Promise<void>;
+  onSaveDefaultHorario: (horario: string) => Promise<void>;
   onSaveWorkerHorario: (trabajadorId: string, horarioLaboral: string) => Promise<void>;
   onCreateBloqueo: (b: BloqueoInput) => Promise<void>;
   onUpdateBloqueo: (id: string, b: BloqueoInput) => Promise<void>;
@@ -65,72 +34,176 @@ export interface BloqueoInput {
   trabajadorId?: string;
 }
 
+type DraftSetter = React.Dispatch<React.SetStateAction<HorarioDraft>>;
+
+function makeHandlers(setDraft: DraftSetter) {
+  return {
+    updateBlock: (day: string, idx: number, field: 0 | 1, value: string) =>
+      setDraft((prev) => {
+        const next = { ...prev };
+        const blocks = (next[day] || []).map((b) => [...b] as HorarioBloque);
+        if (blocks[idx]) blocks[idx][field] = value;
+        next[day] = blocks;
+        return next;
+      }),
+    addBlock: (day: string) =>
+      setDraft((prev) => ({ ...prev, [day]: [...(prev[day] || []), ["09:00", "18:00"]] })),
+    removeBlock: (day: string, idx: number) =>
+      setDraft((prev) => ({ ...prev, [day]: (prev[day] || []).filter((_, i) => i !== idx) })),
+    clearDay: (day: string) => setDraft((prev) => ({ ...prev, [day]: [] })),
+  };
+}
+
+function renderEditor(
+  draft: HorarioDraft,
+  handlers: ReturnType<typeof makeHandlers>
+) {
+  return (
+    <div className="space-y-3">
+      {WEEKDAYS.map((day) => {
+        const blocks = draft[day.key] || [];
+        return (
+          <div
+            key={day.key}
+            className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl border ${
+              blocks.length ? "border-outline-variant/10 bg-ivory-base/30" : "border-dashed border-outline-variant/30"
+            }`}
+          >
+            <div className="w-20 shrink-0">
+              <span className="font-sans text-xs font-extrabold text-primary">{day.label}</span>
+            </div>
+
+            <div className="flex-1 flex flex-wrap items-center gap-2">
+              {blocks.length === 0 ? (
+                <span className="text-[11px] font-bold text-outline italic">Cerrado</span>
+              ) : (
+                blocks.map((b, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <input
+                      type="time"
+                      value={b[0]}
+                      onChange={(e) => handlers.updateBlock(day.key, idx, 0, e.target.value)}
+                      className="px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+                    />
+                    <span className="text-outline text-[10px]">–</span>
+                    <input
+                      type="time"
+                      value={b[1]}
+                      onChange={(e) => handlers.updateBlock(day.key, idx, 1, e.target.value)}
+                      className="px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={() => handlers.removeBlock(day.key, idx)}
+                      className="p-1 text-warm-terracotta hover:bg-warm-terracotta/10 rounded-full cursor-pointer"
+                      title="Quitar bloque"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => handlers.addBlock(day.key)}
+                className="px-2.5 py-1 text-[10px] font-bold text-primary bg-primary/5 border border-primary/15 rounded-full cursor-pointer hover:bg-primary hover:text-white transition-colors"
+              >
+                {blocks.length ? "+ Bloque" : "Abrir"}
+              </button>
+              {blocks.length > 0 && (
+                <button
+                  onClick={() => handlers.clearDay(day.key)}
+                  className="px-2.5 py-1 text-[10px] font-bold text-warm-terracotta bg-warm-terracotta/5 border border-warm-terracotta/15 rounded-full cursor-pointer hover:bg-warm-terracotta hover:text-white transition-colors"
+                >
+                  Cerrar
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <p className="font-sans text-[11px] text-outline">
+        El hueco entre bloques (p. ej. 13:00–15:00) se interpreta como descanso/almuerzo. Un solo bloque = jornada corrida.
+      </p>
+    </div>
+  );
+}
+
 export function BreakConfigView({
   trabajadores,
   configuracion,
   bloqueos,
-  onSaveGlobalHorario,
+  onSaveDefaultHorario,
   onSaveWorkerHorario,
   onCreateBloqueo,
   onUpdateBloqueo,
   onDeleteBloqueo,
 }: BreakConfigViewProps) {
   const [tab, setTab] = useState<"horario" | "bloqueos">("horario");
-  const [scope, setScope] = useState<string>("global");
 
-  const globalParsed = useMemo(() => parseHorario(configuracion?.horarioGlobal || ""), [configuracion?.horarioGlobal]);
-  const globalRaw = useMemo(() => serializeHorario(globalParsed), [globalParsed]);
-  const worker = trabajadores.find((t) => t.id === scope);
+  const defaultParsed = useMemo(() => parseHorario(configuracion?.horarioGlobal || ""), [configuracion?.horarioGlobal]);
+  const defaultRaw = useMemo(() => serializeHorario(defaultParsed), [defaultParsed]);
 
-  const [horarioDraft, setHorarioDraft] = useState<Record<string, HorarioBloque[]>>({});
-  const [savingHorario, setSavingHorario] = useState(false);
-  const [horarioMsg, setHorarioMsg] = useState<string | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>("");
+  const [showDefault, setShowDefault] = useState(false);
+
+  const [workerDraft, setWorkerDraft] = useState<HorarioDraft>({});
+  const [defaultDraft, setDefaultDraft] = useState<HorarioDraft>({});
+
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const selectedWorker = trabajadores.find((t) => t.id === selectedWorkerId) || null;
 
   useEffect(() => {
-    if (scope === "global") {
-      setHorarioDraft(JSON.parse(JSON.stringify(globalParsed)));
-    } else if (worker) {
-      const override = parseHorario(worker.horarioLaboral);
-      setHorarioDraft(JSON.parse(JSON.stringify(mergeHorario(globalParsed, override))));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, trabajadores, globalRaw]);
+    if (!selectedWorkerId && trabajadores.length) setSelectedWorkerId(trabajadores[0].id);
+  }, [trabajadores, selectedWorkerId]);
 
-  const updateBlock = (day: string, idx: number, field: 0 | 1, value: string) => {
-    setHorarioDraft((prev) => {
-      const next = { ...prev };
-      const blocks = (next[day] || []).map((b) => [...b] as HorarioBloque);
-      if (blocks[idx]) blocks[idx][field] = value;
-      next[day] = blocks;
-      return next;
-    });
+  useEffect(() => {
+    setWorkerDraft(parseHorario(selectedWorker?.horarioLaboral || ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkerId, trabajadores]);
+
+  useEffect(() => {
+    setDefaultDraft(JSON.parse(JSON.stringify(defaultParsed)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultRaw]);
+
+  const flash = (m: string) => {
+    setMsg(m);
+    setTimeout(() => setMsg(null), 3500);
   };
 
-  const addBlock = (day: string) =>
-    setHorarioDraft((prev) => ({ ...prev, [day]: [...(prev[day] || []), ["09:00", "18:00"]] }));
-
-  const removeBlock = (day: string, idx: number) =>
-    setHorarioDraft((prev) => ({ ...prev, [day]: (prev[day] || []).filter((_, i) => i !== idx) }));
-
-  const clearDay = (day: string) => setHorarioDraft((prev) => ({ ...prev, [day]: [] }));
-
-  const handleSaveHorario = async () => {
-    setSavingHorario(true);
-    setHorarioMsg(null);
+  const handleSaveWorker = async () => {
+    if (!selectedWorker) return;
+    setSaving(true);
     try {
-      if (scope === "global") {
-        await onSaveGlobalHorario(serializeHorario(horarioDraft));
-      } else if (worker) {
-        const override = diffHorario(horarioDraft, globalParsed);
-        await onSaveWorkerHorario(worker.id, serializeHorario(override));
-      }
-      setHorarioMsg("Horario guardado correctamente.");
-    } catch (err) {
-      setHorarioMsg("Error al guardar el horario.");
+      await onSaveWorkerHorario(selectedWorker.id, serializeHorario(workerDraft));
+      flash("Horario guardado correctamente.");
+    } catch {
+      flash("Error al guardar el horario.");
     } finally {
-      setSavingHorario(false);
-      setTimeout(() => setHorarioMsg(null), 3500);
+      setSaving(false);
     }
+  };
+
+  const handleSaveDefault = async () => {
+    setSaving(true);
+    try {
+      await onSaveDefaultHorario(serializeHorario(defaultDraft));
+      flash("Horario predeterminado guardado.");
+    } catch {
+      flash("Error al guardar el horario predeterminado.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const applyDefaultToWorker = () => {
+    if (!selectedWorker) return;
+    setWorkerDraft(JSON.parse(JSON.stringify(defaultDraft)));
+    flash("Horario predeterminado cargado. Revisa y pulsa 'Guardar horario'.");
   };
 
   // Bloqueos state
@@ -211,7 +284,7 @@ export function BreakConfigView({
           <span className="font-sans text-[11px] font-black text-secondary uppercase tracking-widest">Panel Administrativo Canino</span>
           <h2 className="font-serif text-3xl md:text-5xl text-primary font-bold mt-1">Horarios &amp; Descansos</h2>
           <p className="font-sans text-xs text-on-surface-variant mt-1.5 font-medium">
-            Configura el horario semanal del salón, los descansos de cada trabajador y los bloqueos puntuales.
+            Configura el horario de cada trabajador, el horario predeterminado del salón y los bloqueos puntuales.
           </p>
         </div>
         <div className="flex p-1 bg-surface-container rounded-full border border-outline-variant/20 bg-[#f9f6f0]">
@@ -232,113 +305,81 @@ export function BreakConfigView({
       {tab === "horario" && (
         <section className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setScope("global")}
-              className={`px-4 py-2 rounded-full font-sans text-xs font-bold border transition-all cursor-pointer ${
-                scope === "global" ? "bg-primary text-white border-primary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"
-              }`}
-            >
-              Horario del salón (global)
-            </button>
             {trabajadores.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setScope(t.id)}
+                onClick={() => setSelectedWorkerId(t.id)}
                 className={`px-4 py-2 rounded-full font-sans text-xs font-bold border transition-all cursor-pointer ${
-                  scope === t.id ? "bg-primary text-white border-primary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"
+                  selectedWorkerId === t.id ? "bg-primary text-white border-primary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"
                 }`}
               >
                 {t.nombre}
               </button>
             ))}
+            <button
+              onClick={() => setShowDefault((v) => !v)}
+              className={`px-4 py-2 rounded-full font-sans text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                showDefault ? "bg-secondary text-white border-secondary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-secondary/40"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[15px]">tune</span>
+              Horario predeterminado
+            </button>
           </div>
 
-          {scope !== "global" && (
-            <p className="text-[11px] text-on-surface-variant bg-ivory-base/60 border border-outline-variant/15 rounded-2xl px-4 py-3">
-              Estás editando el horario de <b>{worker?.nombre}</b>. Los días que dejes igual que el horario global se heredarán automáticamente; solo se guardan las diferencias.
-            </p>
+          {/* Panel predeterminado */}
+          {showDefault && (
+            <div className="bg-surface-container-low/40 border border-secondary/20 rounded-3xl p-5 md:p-6 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif text-base font-bold text-primary">Horario predeterminado del salón</h3>
+                  <p className="text-[11px] text-on-surface-variant">
+                    Es la plantilla de la que parten los trabajadores nuevos y la que puedes aplicar a un trabajador concreto.
+                  </p>
+                </div>
+                <button
+                  onClick={handleSaveDefault}
+                  disabled={saving}
+                  className="px-5 py-2.5 bg-secondary hover:bg-secondary/90 text-white font-sans text-xs font-bold rounded-full cursor-pointer shrink-0"
+                >
+                  {saving ? "Guardando..." : "Guardar predeterminado"}
+                </button>
+              </div>
+              {renderEditor(defaultDraft, makeHandlers(setDefaultDraft))}
+            </div>
           )}
 
-          <div className="bg-white rounded-3xl border border-outline-variant/15 p-5 md:p-6 space-y-3 shadow-sm">
-            {WEEKDAYS.map((day) => {
-              const blocks = horarioDraft[day.key] || [];
-              return (
-                <div
-                  key={day.key}
-                  className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl border ${
-                    blocks.length ? "border-outline-variant/10 bg-ivory-base/30" : "border-dashed border-outline-variant/30"
-                  }`}
-                >
-                  <div className="w-20 shrink-0">
-                    <span className="font-sans text-xs font-extrabold text-primary">{day.label}</span>
-                  </div>
-
-                  <div className="flex-1 flex flex-wrap items-center gap-2">
-                    {blocks.length === 0 ? (
-                      <span className="text-[11px] font-bold text-outline italic">Cerrado</span>
-                    ) : (
-                      blocks.map((b, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5">
-                          <input
-                            type="time"
-                            value={b[0]}
-                            onChange={(e) => updateBlock(day.key, idx, 0, e.target.value)}
-                            className="px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
-                          />
-                          <span className="text-outline text-[10px]">–</span>
-                          <input
-                            type="time"
-                            value={b[1]}
-                            onChange={(e) => updateBlock(day.key, idx, 1, e.target.value)}
-                            className="px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
-                          />
-                          <button
-                            onClick={() => removeBlock(day.key, idx)}
-                            className="p-1 text-warm-terracotta hover:bg-warm-terracotta/10 rounded-full cursor-pointer"
-                            title="Quitar bloque"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">close</span>
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => addBlock(day.key)}
-                      className="px-2.5 py-1 text-[10px] font-bold text-primary bg-primary/5 border border-primary/15 rounded-full cursor-pointer hover:bg-primary hover:text-white transition-colors"
-                    >
-                      {blocks.length ? "+ Bloque" : "Abrir"}
-                    </button>
-                    {blocks.length > 0 && (
-                      <button
-                        onClick={() => clearDay(day.key)}
-                        className="px-2.5 py-1 text-[10px] font-bold text-warm-terracotta bg-warm-terracotta/5 border border-warm-terracotta/15 rounded-full cursor-pointer hover:bg-warm-terracotta hover:text-white transition-colors"
-                      >
-                        Cerrar
-                      </button>
-                    )}
-                  </div>
+          {selectedWorker ? (
+            <div className="bg-white rounded-3xl border border-outline-variant/15 p-5 md:p-6 space-y-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-serif text-base font-bold text-primary">Horario de {selectedWorker.nombre}</h3>
+                  <p className="text-[11px] text-on-surface-variant">Calendario de trabajo independiente de {selectedWorker.nombre}.</p>
                 </div>
-              );
-            })}
-
-            <div className="flex items-center justify-between pt-4 border-t border-outline-variant/10">
-              <span className="font-sans text-[11px] text-outline">
-                El hueco entre bloques (p. ej. 13:00–15:00) se interpreta como descanso/almuerzo. Un solo bloque = jornada corrida.
-              </span>
-              <button
-                onClick={handleSaveHorario}
-                disabled={savingHorario}
-                className="px-6 py-3 bg-primary hover:bg-primary/95 text-white font-sans text-xs font-bold rounded-full cursor-pointer shrink-0"
-              >
-                {savingHorario ? "Guardando..." : "Guardar horario"}
-              </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={applyDefaultToWorker}
+                    className="px-4 py-2 bg-ivory-base hover:bg-surface-container text-primary font-sans text-[11px] font-bold rounded-full cursor-pointer border border-outline-variant/25 flex items-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">download</span>
+                    Aplicar horario predeterminado
+                  </button>
+                  <button
+                    onClick={handleSaveWorker}
+                    disabled={saving}
+                    className="px-5 py-2.5 bg-primary hover:bg-primary/95 text-white font-sans text-xs font-bold rounded-full cursor-pointer"
+                  >
+                    {saving ? "Guardando..." : "Guardar horario"}
+                  </button>
+                </div>
+              </div>
+              {renderEditor(workerDraft, makeHandlers(setWorkerDraft))}
             </div>
+          ) : (
+            <p className="text-xs text-outline italic">No hay trabajadores configurados.</p>
+          )}
 
-            {horarioMsg && <p className="text-xs font-bold text-secondary">{horarioMsg}</p>}
-          </div>
+          {msg && <p className="text-xs font-bold text-secondary">{msg}</p>}
         </section>
       )}
 
