@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DesignTokens, ScreenList, AssetsList } from "./tokens";
-import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet } from "./types";
+import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet, Trabajador } from "./types";
 
 // Import view components
 import { DashboardView } from "./components/DashboardView";
@@ -1723,6 +1723,15 @@ export default function App() {
       } catch (err) {
         console.warn("[Odoo] Services load failed:", err);
       }
+      try {
+        const workers = await odooService.getTrabajadores();
+        console.log("[Odoo] Trabajadores loaded:", workers?.length, "items");
+        if (workers?.length) {
+          setTrabajadores(workers);
+        }
+      } catch (err) {
+        console.warn("[Odoo] Trabajadores load failed:", err);
+      }
     }
     loadFromOdoo();
   }, []);
@@ -1767,6 +1776,7 @@ export default function App() {
   });
 
   const [serviceIdByCode, setServiceIdByCode] = useState<Record<string, string>>({});
+  const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
 
   // Administrative action handlers with localStorage persistence
   const handleSaveService = async (srv: Service) => {
@@ -2491,6 +2501,7 @@ export default function App() {
               <CalendarView
                 appointments={appointments}
                 owners={owners}
+                trabajadores={trabajadores}
                 onNavigate={setView}
                 userRole={session.role}
                 onSelectClientDetail={handleSelectClientDetail}

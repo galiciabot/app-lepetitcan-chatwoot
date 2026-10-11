@@ -1,4 +1,4 @@
-import { Owner, Pet, Appointment, VisitHistory, OdooService, Disponibilidad } from "../types";
+import { Owner, Pet, Appointment, VisitHistory, OdooService, Disponibilidad, Trabajador } from "../types";
 
 const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
@@ -161,6 +161,18 @@ export async function deletePet(id: number | string): Promise<any> {
   return post<any>("/delete-pet", { id: String(id) });
 }
 
+// ========== TRABAJADORES ==========
+
+export async function getTrabajadores(): Promise<Trabajador[]> {
+  const list = await get<any[]>("/get-trabajadores");
+  return list.map((w) => ({
+    id: String(w.id),
+    nombre: w.nombre || "",
+    horarioLaboral: w.horarioLaboral,
+    activo: w.activo !== false,
+  }));
+}
+
 // ========== SERVICES ==========
 
 export async function getServices(): Promise<OdooService[]> {
@@ -187,6 +199,9 @@ export interface OdooAppointment {
   duration: number;
   partnerName: string;
   partnerId?: number | false;
+  ownerName?: string;
+  ownerPhone?: string;
+  ownerEmail?: string;
   dogName?: string;
   mascotaId?: number | false;
   serviceName?: string;
@@ -346,6 +361,11 @@ export function estadoLabelToKey(label?: string): string {
 
 export function appointmentToAppointment(raw: OdooAppointment): Appointment {
   const estado = raw.estado || raw.status || "";
+  const duracionTotalMin = raw.duracionTotalMin
+    ? raw.duracionTotalMin
+    : raw.duration && raw.duration > 0 && raw.duration <= 24
+      ? Math.round(raw.duration * 60)
+      : undefined;
   return {
     id: String(raw.id),
     time: raw.start?.slice(11, 16) || "00:00",
@@ -353,16 +373,18 @@ export function appointmentToAppointment(raw: OdooAppointment): Appointment {
     dogName: raw.dogName || raw.title || "",
     breed: "",
     size: "Mediano" as any,
-    ownerName: raw.partnerName || "",
+    ownerName: raw.ownerName || raw.partnerName || "",
     service: raw.serviceName || raw.title || "",
     status: ESTADO_KEY_TO_LABEL[estado] || estado || "Pendiente",
     rawTime: raw.start?.slice(11, 16) || "00:00",
     date: raw.start?.slice(0, 10) || "",
+    ownerPhone: raw.ownerPhone || "",
+    ownerEmail: raw.ownerEmail || "",
     ownerId: raw.partnerId ? String(raw.partnerId) : undefined,
     petId: raw.mascotaId ? String(raw.mascotaId) : undefined,
     serviceId: raw.servicioId ? String(raw.servicioId) : undefined,
     trabajadorId: raw.trabajadorId ? String(raw.trabajadorId) : undefined,
     trabajadorName: raw.trabajadorName || undefined,
-    duracionTotalMin: raw.duracionTotalMin || undefined,
+    duracionTotalMin,
   };
 }

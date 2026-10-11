@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { Appointment, Owner } from "../types";
+import { Appointment, Owner, Trabajador } from "../types";
 
 interface CalendarViewProps {
   appointments: Appointment[];
   owners: Owner[];
+  trabajadores?: Trabajador[];
   onNavigate: (viewId: string) => void;
   userRole?: string;
   onSelectClientDetail?: (ownerName: string, dogName: string) => void;
@@ -30,6 +31,7 @@ function isSameDay(a: Date, b: Date): boolean {
 export function CalendarView({
   appointments,
   owners,
+  trabajadores,
   onNavigate,
   userRole,
   onSelectClientDetail,
@@ -51,13 +53,14 @@ export function CalendarView({
 
   const workerList = useMemo(() => {
     const map = new Map<string, string>();
-    appointments.forEach((a) => {
-      const id = a.trabajadorId || "sin";
-      const name = a.trabajadorName || "Sin asignar";
-      if (!map.has(id)) map.set(id, name);
+    (trabajadores || []).forEach((t) => {
+      if (t.activo === false) return;
+      map.set(String(t.id), t.nombre);
     });
+    const hasUnassigned = appointments.some((a) => !a.trabajadorId);
+    if (hasUnassigned) map.set("sin", "Sin asignar");
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [appointments]);
+  }, [trabajadores, appointments]);
 
   const getOwnerPet = (ap: Appointment) => {
     let owner = ap.ownerId ? owners.find((o) => String(o.id) === String(ap.ownerId)) : undefined;
@@ -595,7 +598,7 @@ export function CalendarView({
                   className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
                 >
                   <option value="">Sin asignar</option>
-                  {workerList.map((w) => (
+                  {workerList.filter((w) => w.id !== "sin").map((w) => (
                     <option key={w.id} value={w.id}>{w.name}</option>
                   ))}
                 </select>

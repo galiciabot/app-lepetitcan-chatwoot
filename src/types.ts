@@ -38,6 +38,13 @@ export interface OdooService {
   activo: boolean;
 }
 
+export interface Trabajador {
+  id: string;
+  nombre: string;
+  horarioLaboral?: string;
+  activo: boolean;
+}
+
 export interface Hueco {
   inicio: string;
   fin: string;
