@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Service, Product, Owner, Pet, ServicePricing, UserRole } from "../types";
+import { Service, Product, Owner, Pet, ServicePricing, UserRole, OdooService, ServicioPayload } from "../types";
 
 export interface IntegrationConfig {
   n8nWebhookUrl: string;
@@ -27,6 +27,25 @@ const DEFAULT_INTEGRATION_CONFIG: IntegrationConfig = {
   pipelineAutoDeploy: false,
 };
 
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function parseDuraciones(json?: string): Record<string, number> {
+  try {
+    const p = JSON.parse((json || "").replace(/<[^>]*>/g, ""));
+    if (p && typeof p === "object") return p as Record<string, number>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
 interface AdminManagementViewProps {
   services: Service[];
   onSaveService: (srv: Service) => Promise<void>;
@@ -38,6 +57,9 @@ interface AdminManagementViewProps {
   owners: Owner[];
   onSaveOwner: (owner: Owner) => Promise<void>;
   onDeleteOwner: (id: string) => Promise<void>;
+  odooServicios: OdooService[];
+  onCreateServicio: (payload: ServicioPayload) => Promise<void>;
+  onUpdateServicio: (id: string, payload: ServicioPayload) => Promise<void>;
   onNavigateBack: () => void;
   userRole?: UserRole;
   onNavigateToOmnichannel?: () => void;
@@ -54,11 +76,14 @@ export function AdminManagementView({
   owners,
   onSaveOwner,
   onDeleteOwner,
+  odooServicios,
+  onCreateServicio,
+  onUpdateServicio,
   onNavigateBack,
   userRole,
   onNavigateToOmnichannel,
 }: AdminManagementViewProps) {
-  const [activeTab, setActiveTab] = useState<"services" | "products" | "integrations">("services");
+  const [activeTab, setActiveTab] = useState<"services" | "products" | "integrations" | "agenda">("services");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Integrations configuration and simulation states
@@ -118,8 +143,61 @@ export function AdminManagementView({
   // Loading/Operation feedback states
   const [isSaving, setIsSaving] = useState(false);
 
+  // Odoo service editor (agenda + buffer)
+  const [editingOdooServicio, setEditingOdooServicio] = useState<OdooService | null>(null);
+  const [servicioModalOpen, setServicioModalOpen] = useState(false);
+  const [servicioForm, setServicioForm] = useState<{
+    name: string;
+    codigo: string;
+    buffer: number;
+    activo: boolean;
+    duraciones: Record<string, number>;
+  }>({ name: "", codigo: "", buffer: 0, activo: true, duraciones: {} });
+  const [savingServicio, setSavingServicio] = useState(false);
+
+  const openNewServicio = () => {
+    setEditingOdooServicio(null);
+    const dur: Record<string, number> = {};
+    ODOO_SIZES.forEach((s) => (dur[s] = 0));
+    setServicioForm({ name: "", codigo: "", buffer: 0, activo: true, duraciones: dur });
+    setServicioModalOpen(true);
+  };
+
+  const openEditServicio = (s: OdooService) => {
+    setEditingOdooServicio(s);
+    const dur = parseDuraciones(s.duracionPorTamano);
+    ODOO_SIZES.forEach((sz) => {
+      if (dur[sz] === undefined) dur[sz] = 0;
+    });
+    setServicioForm({ name: s.name, codigo: s.codigo, buffer: s.bufferMinutos || 0, activo: s.activo !== false, duraciones: dur });
+    setServicioModalOpen(true);
+  };
+
+  const handleSaveServicio = async () => {
+    if (!servicioForm.name) return;
+    setSavingServicio(true);
+    const payload: ServicioPayload = {
+      name: servicioForm.name,
+      codigo: servicioForm.codigo || slugify(servicioForm.name),
+      duracion_por_tamano: JSON.stringify(servicioForm.duraciones),
+      buffer_minutos: Number(servicioForm.buffer) || 0,
+      active: servicioForm.activo,
+    };
+    try {
+      if (editingOdooServicio) await onUpdateServicio(editingOdooServicio.id, payload);
+      else await onCreateServicio(payload);
+      setServicioModalOpen(false);
+      setEditingOdooServicio(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingServicio(false);
+    }
+  };
+
   // SIZES used for service pricing matrices
   const SIZES_FOR_PRICING = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante"];
+  const ODOO_SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"];
 
   // Category list for products
   const PRODUCT_CATEGORIES = ["Cosmética", "Accesorios", "Farmacia", "Alimentación", "Snacks", "Otros"];
@@ -382,6 +460,21 @@ export function AdminManagementView({
           <span>Artículos con Stock ({products.length})</span>
         </button>
 
+        <button
+          onClick={() => {
+            setActiveTab("agenda");
+            setSearchQuery("");
+          }}
+          className={`px-4 py-2.5 font-sans text-xs font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+            activeTab === "agenda"
+              ? "border-primary text-primary"
+              : "border-transparent text-outline hover:text-primary"
+          }`}
+        >
+          <span className="material-symbols-outlined text-base">schedule</span>
+          <span>Servicios &amp; Buffer ({odooServicios.length})</span>
+        </button>
+
         {userRole === "administrador" && (
           <button
             onClick={() => {
@@ -402,7 +495,7 @@ export function AdminManagementView({
         </div>
 
       {/* Search Bar */}
-      {activeTab !== "integrations" && (
+      {(activeTab === "services" || activeTab === "products") && (
         <div className="mb-6 relative">
           <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">
             search
@@ -590,6 +683,66 @@ export function AdminManagementView({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* SERVICIOS & BUFFER (Odoo agenda) TAB CONTENT */}
+      {activeTab === "agenda" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-xs text-on-surface-variant max-w-2xl">
+              Duración por tamaño y <b>buffer</b> (minutos de preparación/descanso después de cada servicio). El buffer se suma a la duración real al agendar y al calcular la disponibilidad.
+            </p>
+            <button
+              onClick={openNewServicio}
+              className="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white font-sans text-xs font-bold rounded-full cursor-pointer flex items-center gap-1.5 shrink-0"
+            >
+              <span className="material-symbols-outlined text-base">add_circle</span> Nuevo servicio
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {odooServicios.map((s) => {
+              const dur = parseDuraciones(s.duracionPorTamano);
+              const inactivo = s.activo === false;
+              return (
+                <div key={s.id} className={`bg-white border rounded-[2rem] p-5 space-y-3 shadow-sm ${inactivo ? "border-outline-variant/20 opacity-70" : "border-outline-variant/30"}`}>
+                  <div className="flex justify-between items-start gap-3">
+                    <div>
+                      <h3 className="font-serif text-base font-bold text-primary flex items-center gap-2">
+                        {s.name}
+                        {inactivo && <span className="text-[9px] font-sans bg-stone-200 text-stone-600 px-2 py-0.5 rounded-full uppercase">Inactivo</span>}
+                      </h3>
+                      <p className="text-[10px] font-mono text-outline">{s.codigo}</p>
+                    </div>
+                    <button
+                      onClick={() => openEditServicio(s)}
+                      className="p-1 px-2.5 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-full text-[10px] font-sans font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-[13px]">edit</span> Modificar
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {ODOO_SIZES.map((sz) => (
+                      <span key={sz} className="text-[9px] font-bold text-on-surface-variant bg-ivory-base rounded-full px-2 py-1 border border-outline-variant/10">
+                        {sz}: {dur[sz] !== undefined ? `${dur[sz]}'` : "—"}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-outline-variant/10 flex items-center gap-2 text-[11px] font-bold">
+                    <span className="material-symbols-outlined text-[14px] text-secondary">hourglass_empty</span>
+                    <span className="text-on-surface-variant">Buffer: <span className="text-primary">{s.bufferMinutos} min</span></span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {odooServicios.length === 0 && (
+              <p className="text-xs text-outline italic text-center col-span-2 py-8">No hay servicios configurados en la agenda.</p>
+            )}
           </div>
         </div>
       )}
@@ -895,6 +1048,96 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
       )}
 
       {/* ==================================== MODAL EDITORS ==================================== */}
+
+      {/* SERVICIO DE AGENDA (Odoo) MODAL */}
+      {servicioModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-sm overflow-y-auto" onClick={() => setServicioModalOpen(false)}>
+          <div className="bg-white rounded-[2rem] max-w-lg w-full p-6 md:p-8 shadow-2xl border border-outline-variant/30 text-left relative animate-in fade-in duration-200 my-8 max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setServicioModalOpen(false)} className="absolute top-6 right-6 text-outline hover:text-primary cursor-pointer">
+              <span className="material-symbols-outlined text-xl">close</span>
+            </button>
+
+            <h3 className="font-serif text-xl font-bold text-primary mb-1">{editingOdooServicio ? "Editar servicio de agenda" : "Nuevo servicio de agenda"}</h3>
+            <p className="text-xs text-on-surface-variant mb-5">Duración por tamaño y buffer de preparación tras cada servicio.</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">Nombre del servicio</label>
+                <input
+                  value={servicioForm.name}
+                  onChange={(e) => setServicioForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Ej: Baño de Hidratación Profunda"
+                  className="w-full px-4 py-2 border border-outline-variant/40 rounded-full text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">Código (slug)</label>
+                <input
+                  value={servicioForm.codigo}
+                  onChange={(e) => setServicioForm((f) => ({ ...f, codigo: e.target.value }))}
+                  placeholder="Se genera solo si lo dejas vacío"
+                  className="w-full px-4 py-2 border border-outline-variant/40 rounded-full text-xs text-on-surface font-mono focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="border-t border-outline-variant/10 pt-3">
+                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-2">Duración por tamaño (minutos)</label>
+                <div className="space-y-2">
+                  {ODOO_SIZES.map((sz) => (
+                    <div key={sz} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-bold text-on-surface-variant w-32">{sz}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={servicioForm.duraciones[sz] ?? 0}
+                        onChange={(e) =>
+                          setServicioForm((f) => ({
+                            ...f,
+                            duraciones: { ...f.duraciones, [sz]: parseInt(e.target.value, 10) || 0 },
+                          }))
+                        }
+                        className="w-24 px-3 py-1.5 border border-outline-variant/40 rounded-full text-xs text-on-surface text-center focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 border-t border-outline-variant/10 pt-3">
+                <div>
+                  <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">Buffer (min)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={servicioForm.buffer}
+                    onChange={(e) => setServicioForm((f) => ({ ...f, buffer: parseInt(e.target.value, 10) || 0 }))}
+                    className="w-full px-4 py-2 border border-outline-variant/40 rounded-full text-xs text-on-surface text-center focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 text-[11px] font-bold text-on-surface cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={servicioForm.activo}
+                      onChange={(e) => setServicioForm((f) => ({ ...f, activo: e.target.checked }))}
+                      className="rounded border-outline-variant text-primary focus:ring-primary accent-primary h-4 w-4"
+                    />
+                    Activo
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3">
+                <button onClick={() => setServicioModalOpen(false)} className="px-6 py-2.5 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
+                <button onClick={handleSaveServicio} disabled={savingServicio} className="px-6 py-2.5 bg-primary text-white font-sans text-xs font-bold rounded-full cursor-pointer">
+                  {savingServicio ? "Guardando..." : "Guardar servicio"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. SERVICE MODAL EDITOR */}
       {editingService && (

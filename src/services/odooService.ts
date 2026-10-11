@@ -1,4 +1,4 @@
-import { Owner, Pet, Appointment, VisitHistory, OdooService, Disponibilidad, Trabajador, Configuracion, Bloqueo, HorarioBloque } from "../types";
+import { Owner, Pet, Appointment, VisitHistory, OdooService, ServicioPayload, Disponibilidad, Trabajador, Configuracion, Bloqueo, HorarioBloque } from "../types";
 
 const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
@@ -269,6 +269,14 @@ export function serializeHorario(h: Record<string, HorarioBloque[]>): string {
 
 export async function getServices(): Promise<OdooService[]> {
   return get<OdooService[]>("/get-services");
+}
+
+export async function createServicio(data: ServicioPayload): Promise<any> {
+  return post<any>("/create-servicio", data);
+}
+
+export async function updateServicio(id: number | string, data: ServicioPayload): Promise<any> {
+  return post<any>("/update-servicio", { id: String(id), ...data });
 }
 
 export async function getDisponibilidad(data: {

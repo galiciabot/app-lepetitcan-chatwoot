@@ -38,6 +38,14 @@ export interface OdooService {
   activo: boolean;
 }
 
+export interface ServicioPayload {
+  name: string;
+  codigo: string;
+  duracion_por_tamano: string;
+  buffer_minutos: number;
+  active: boolean;
+}
+
 export interface Trabajador {
   id: string;
   nombre: string;

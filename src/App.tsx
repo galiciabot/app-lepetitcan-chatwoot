@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DesignTokens, ScreenList, AssetsList } from "./tokens";
-import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet, Trabajador, Configuracion, Bloqueo } from "./types";
+import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet, Trabajador, Configuracion, Bloqueo, OdooService, ServicioPayload } from "./types";
 
 // Import view components
 import { DashboardView } from "./components/DashboardView";
@@ -1714,6 +1714,7 @@ export default function App() {
         const svcs = await odooService.getServices();
         console.log("[Odoo] Services loaded:", svcs?.length, "items");
         if (svcs?.length) {
+          setOdooServicios(svcs);
           const map: Record<string, string> = {};
           svcs.forEach((s) => {
             if (s.codigo && s.id) map[s.codigo] = String(s.id);
@@ -1790,6 +1791,7 @@ export default function App() {
   });
 
   const [serviceIdByCode, setServiceIdByCode] = useState<Record<string, string>>({});
+  const [odooServicios, setOdooServicios] = useState<OdooService[]>([]);
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
   const [configuracion, setConfiguracion] = useState<Configuracion | null>(null);
   const [bloqueos, setBloqueos] = useState<Bloqueo[]>([]);
@@ -1804,6 +1806,30 @@ export default function App() {
   const handleSaveWorkerHorario = async (trabajadorId: string, horarioLaboral: string) => {
     await odooService.updateTrabajador(trabajadorId, { horario_laboral: horarioLaboral });
     setTrabajadores((prev) => prev.map((t) => (t.id === trabajadorId ? { ...t, horarioLaboral } : t)));
+  };
+
+  const refreshServicios = async () => {
+    try {
+      const svcs = await odooService.getServices();
+      setOdooServicios(svcs);
+      const map: Record<string, string> = {};
+      svcs.forEach((s) => {
+        if (s.codigo && s.id) map[s.codigo] = String(s.id);
+      });
+      setServiceIdByCode(map);
+    } catch (err) {
+      console.warn("[Odoo] refresh servicios failed:", err);
+    }
+  };
+
+  const handleCreateServicio = async (payload: ServicioPayload) => {
+    await odooService.createServicio(payload);
+    await refreshServicios();
+  };
+
+  const handleUpdateServicio = async (id: string, payload: ServicioPayload) => {
+    await odooService.updateServicio(id, payload);
+    await refreshServicios();
   };
 
   const refreshBloqueos = async () => {
@@ -2652,6 +2678,9 @@ onAppointmentCreated={handleBookingCreated}
                   owners={owners}
                   onSaveOwner={handleSaveOwner}
                   onDeleteOwner={handleDeleteOwner}
+                  odooServicios={odooServicios}
+                  onCreateServicio={handleCreateServicio}
+                  onUpdateServicio={handleUpdateServicio}
                   onNavigateBack={() => setView("dashboard")}
                   userRole={session.role}
                 />
