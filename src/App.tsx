@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DesignTokens, ScreenList, AssetsList } from "./tokens";
-import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet, Trabajador } from "./types";
+import { Appointment, ClientProfile, ChatThread, AppointmentDraft, UserSession, UserRole, Service, Product, Owner, Pet, Trabajador, Configuracion, Bloqueo } from "./types";
 
 // Import view components
 import { DashboardView } from "./components/DashboardView";
@@ -1732,6 +1732,20 @@ export default function App() {
       } catch (err) {
         console.warn("[Odoo] Trabajadores load failed:", err);
       }
+      try {
+        const cfg = await odooService.getConfiguracion();
+        console.log("[Odoo] Configuracion loaded:", cfg);
+        if (cfg) setConfiguracion(cfg);
+      } catch (err) {
+        console.warn("[Odoo] Configuracion load failed:", err);
+      }
+      try {
+        const bloques = await odooService.getBloqueos();
+        console.log("[Odoo] Bloqueos loaded:", bloques?.length, "items");
+        if (bloques?.length) setBloqueos(bloques);
+      } catch (err) {
+        console.warn("[Odoo] Bloqueos load failed:", err);
+      }
     }
     loadFromOdoo();
   }, []);
@@ -1777,6 +1791,58 @@ export default function App() {
 
   const [serviceIdByCode, setServiceIdByCode] = useState<Record<string, string>>({});
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
+  const [configuracion, setConfiguracion] = useState<Configuracion | null>(null);
+  const [bloqueos, setBloqueos] = useState<Bloqueo[]>([]);
+
+  // Horario & bloqueos handlers (Odoo)
+  const handleSaveGlobalHorario = async (horarioGlobal: string) => {
+    if (!configuracion) throw new Error("No hay configuración cargada");
+    await odooService.updateConfiguracion(configuracion.id, horarioGlobal);
+    setConfiguracion((prev) => (prev ? { ...prev, horarioGlobal } : prev));
+  };
+
+  const handleSaveWorkerHorario = async (trabajadorId: string, horarioLaboral: string) => {
+    await odooService.updateTrabajador(trabajadorId, { horario_laboral: horarioLaboral });
+    setTrabajadores((prev) => prev.map((t) => (t.id === trabajadorId ? { ...t, horarioLaboral } : t)));
+  };
+
+  const refreshBloqueos = async () => {
+    try {
+      const list = await odooService.getBloqueos();
+      setBloqueos(list);
+    } catch (err) {
+      console.warn("[Odoo] refresh bloqueos failed:", err);
+    }
+  };
+
+  const handleCreateBloqueo = async (b: { name: string; fechaInicio: string; fechaFin: string; horaInicio: string; horaFin: string; trabajadorId?: string }) => {
+    await odooService.createBloqueo({
+      name: b.name,
+      fecha_inicio: b.fechaInicio,
+      fecha_fin: b.fechaFin || b.fechaInicio,
+      hora_inicio: b.horaInicio,
+      hora_fin: b.horaFin,
+      trabajador_id: b.trabajadorId && /^\d+$/.test(b.trabajadorId) ? Number(b.trabajadorId) : false,
+    });
+    await refreshBloqueos();
+  };
+
+  const handleUpdateBloqueo = async (id: string, b: { name: string; fechaInicio: string; fechaFin: string; horaInicio: string; horaFin: string; trabajadorId?: string }) => {
+    await odooService.updateBloqueo(id, {
+      name: b.name,
+      fecha_inicio: b.fechaInicio,
+      fecha_fin: b.fechaFin || b.fechaInicio,
+      hora_inicio: b.horaInicio,
+      hora_fin: b.horaFin,
+      trabajador_id: b.trabajadorId && /^\d+$/.test(b.trabajadorId) ? Number(b.trabajadorId) : false,
+    });
+    await refreshBloqueos();
+  };
+
+  const handleDeleteBloqueo = async (id: string) => {
+    await odooService.deleteBloqueo(id);
+    await refreshBloqueos();
+  };
 
   // Administrative action handlers with localStorage persistence
   const handleSaveService = async (srv: Service) => {
@@ -2545,7 +2611,16 @@ export default function App() {
                   <p className="text-xs text-on-surface-variant">La modificación de horarios de descanso del personal está asignada únicamente al Propietario.</p>
                 </div>
               ) : (
-                <BreakConfigView />
+                <BreakConfigView
+                  trabajadores={trabajadores}
+                  configuracion={configuracion}
+                  bloqueos={bloqueos}
+                  onSaveGlobalHorario={handleSaveGlobalHorario}
+                  onSaveWorkerHorario={handleSaveWorkerHorario}
+                  onCreateBloqueo={handleCreateBloqueo}
+                  onUpdateBloqueo={handleUpdateBloqueo}
+                  onDeleteBloqueo={handleDeleteBloqueo}
+                />
               )
             )}
 

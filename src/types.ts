@@ -45,6 +45,24 @@ export interface Trabajador {
   activo: boolean;
 }
 
+export type HorarioBloque = [string, string];
+
+export interface Configuracion {
+  id: string;
+  horarioGlobal: string;
+}
+
+export interface Bloqueo {
+  id: string;
+  name: string;
+  fechaInicio: string;
+  fechaFin: string;
+  horaInicio: string;
+  horaFin: string;
+  trabajadorId?: string;
+  trabajadorName?: string;
+}
+
 export interface Hueco {
   inicio: string;
   fin: string;

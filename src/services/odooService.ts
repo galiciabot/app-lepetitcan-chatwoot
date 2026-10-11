@@ -1,4 +1,4 @@
-import { Owner, Pet, Appointment, VisitHistory, OdooService, Disponibilidad, Trabajador } from "../types";
+import { Owner, Pet, Appointment, VisitHistory, OdooService, Disponibilidad, Trabajador, Configuracion, Bloqueo, HorarioBloque } from "../types";
 
 const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
@@ -171,6 +171,98 @@ export async function getTrabajadores(): Promise<Trabajador[]> {
     horarioLaboral: w.horarioLaboral,
     activo: w.activo !== false,
   }));
+}
+
+export async function updateTrabajador(id: number | string, data: {
+  name?: string;
+  horario_laboral?: string;
+  active?: boolean;
+}): Promise<any> {
+  return post<any>("/update-trabajador", {
+    id: String(id),
+    name: data.name,
+    horario_laboral: data.horario_laboral,
+    active: data.active,
+  });
+}
+
+// ========== CONFIGURACION ==========
+
+export async function getConfiguracion(): Promise<Configuracion | null> {
+  const list = await get<any[]>("/get-configuracion");
+  if (!list || !list.length) return null;
+  return { id: String(list[0].id), horarioGlobal: list[0].horarioGlobal || "" };
+}
+
+export async function updateConfiguracion(id: number | string, horarioGlobal: string): Promise<any> {
+  return post<any>("/update-configuracion", { id: String(id), horario_global: horarioGlobal });
+}
+
+// ========== BLOQUEOS ==========
+
+export async function getBloqueos(): Promise<Bloqueo[]> {
+  const list = await get<any[]>("/get-bloqueos");
+  return list.map((b) => ({
+    id: String(b.id),
+    name: b.name || "",
+    fechaInicio: b.fechaInicio || "",
+    fechaFin: b.fechaFin || "",
+    horaInicio: b.horaInicio || "",
+    horaFin: b.horaFin || "",
+    trabajadorId: b.trabajadorId ? String(b.trabajadorId) : undefined,
+    trabajadorName: b.trabajadorName || undefined,
+  }));
+}
+
+export async function createBloqueo(data: {
+  name: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  hora_inicio: string;
+  hora_fin: string;
+  trabajador_id?: number | false;
+}): Promise<any> {
+  return post<any>("/create-bloqueo", data);
+}
+
+export async function updateBloqueo(id: number | string, data: {
+  name: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  hora_inicio: string;
+  hora_fin: string;
+  trabajador_id?: number | false;
+}): Promise<any> {
+  return post<any>("/update-bloqueo", { id: String(id), ...data });
+}
+
+export async function deleteBloqueo(id: number | string): Promise<any> {
+  return post<any>("/delete-bloqueo", { id: String(id) });
+}
+
+// ========== HORARIO HELPERS ==========
+
+export function parseHorario(text?: string): Record<string, HorarioBloque[]> {
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(String(text).replace(/<[^>]*>/g, ""));
+    const out: Record<string, HorarioBloque[]> = {};
+    if (!parsed || typeof parsed !== "object") return out;
+    for (const [k, v] of Object.entries(parsed)) {
+      if (Array.isArray(v)) {
+        const isFlat = typeof v[0] === "string";
+        const blocks: HorarioBloque[] = isFlat ? [[v[0] as string, v[1] as string]] : (v as HorarioBloque[]);
+        out[k] = blocks.filter((b) => Array.isArray(b) && b.length >= 2);
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function serializeHorario(h: Record<string, HorarioBloque[]>): string {
+  return JSON.stringify(h);
 }
 
 // ========== SERVICES ==========
