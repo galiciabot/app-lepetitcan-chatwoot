@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Service, Product, Owner, Pet, ServicePricing, UserRole, OdooService, ServicioPayload } from "../types";
+import { Product, Owner, Pet, UserRole, OdooService, ServicioPayload, PrecioTamano, PrecioTipo } from "../types";
 
 export interface IntegrationConfig {
   n8nWebhookUrl: string;
@@ -46,11 +46,24 @@ function parseDuraciones(json?: string): Record<string, number> {
   return {};
 }
 
+function parsePrecios(json?: string): Record<string, PrecioTamano> {
+  try {
+    const p = JSON.parse((json || "").replace(/<[^>]*>/g, ""));
+    if (p && typeof p === "object") return p as Record<string, PrecioTamano>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function formatPrecio(p?: PrecioTamano): string {
+  if (!p) return "—";
+  if (p.tipo === "rango") return `${p.min ?? 0}€ – ${p.max ?? 0}€`;
+  if (p.tipo === "hora") return `${p.precio ?? 0}€/h`;
+  return `${p.precio ?? 0}€`;
+}
+
 interface AdminManagementViewProps {
-  services: Service[];
-  onSaveService: (srv: Service) => Promise<void>;
-  onDeleteService: (id: string) => Promise<void>;
-  onResetServicesToDefault?: () => Promise<void>;
   products: Product[];
   onSaveProduct: (prod: Product) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
@@ -66,10 +79,6 @@ interface AdminManagementViewProps {
 }
 
 export function AdminManagementView({
-  services,
-  onSaveService,
-  onDeleteService,
-  onResetServicesToDefault,
   products,
   onSaveProduct,
   onDeleteProduct,
@@ -83,7 +92,7 @@ export function AdminManagementView({
   userRole,
   onNavigateToOmnichannel,
 }: AdminManagementViewProps) {
-  const [activeTab, setActiveTab] = useState<"services" | "products" | "integrations" | "agenda">("services");
+  const [activeTab, setActiveTab] = useState<"servicios" | "products" | "integrations">("servicios");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Integrations configuration and simulation states
@@ -134,7 +143,6 @@ export function AdminManagementView({
   };
 
   // Modals / Editor states
-  const [editingService, setEditingService] = useState<Partial<Service> | null>(null);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [editingOwner, setEditingOwner] = useState<Partial<Owner> | null>(null);
   const [selectedOwnerForPet, setSelectedOwnerForPet] = useState<string | null>(null);
@@ -143,23 +151,31 @@ export function AdminManagementView({
   // Loading/Operation feedback states
   const [isSaving, setIsSaving] = useState(false);
 
-  // Odoo service editor (agenda + buffer)
+  // Odoo service editor (unificado: nombre, descripción, precios, duración, buffer)
   const [editingOdooServicio, setEditingOdooServicio] = useState<OdooService | null>(null);
   const [servicioModalOpen, setServicioModalOpen] = useState(false);
   const [servicioForm, setServicioForm] = useState<{
     name: string;
     codigo: string;
+    descripcion: string;
     buffer: number;
     activo: boolean;
     duraciones: Record<string, number>;
-  }>({ name: "", codigo: "", buffer: 0, activo: true, duraciones: {} });
+    precios: Record<string, PrecioTamano>;
+  }>({ name: "", codigo: "", descripcion: "", buffer: 0, activo: true, duraciones: {}, precios: {} });
   const [savingServicio, setSavingServicio] = useState(false);
+
+  const emptyPrecios = (): Record<string, PrecioTamano> => {
+    const p: Record<string, PrecioTamano> = {};
+    ODOO_SIZES.forEach((s) => (p[s] = { tipo: "fijo", precio: 0 }));
+    return p;
+  };
 
   const openNewServicio = () => {
     setEditingOdooServicio(null);
     const dur: Record<string, number> = {};
     ODOO_SIZES.forEach((s) => (dur[s] = 0));
-    setServicioForm({ name: "", codigo: "", buffer: 0, activo: true, duraciones: dur });
+    setServicioForm({ name: "", codigo: "", descripcion: "", buffer: 0, activo: true, duraciones: dur, precios: emptyPrecios() });
     setServicioModalOpen(true);
   };
 
@@ -169,7 +185,19 @@ export function AdminManagementView({
     ODOO_SIZES.forEach((sz) => {
       if (dur[sz] === undefined) dur[sz] = 0;
     });
-    setServicioForm({ name: s.name, codigo: s.codigo, buffer: s.bufferMinutos || 0, activo: s.activo !== false, duraciones: dur });
+    const precios = parsePrecios(s.precioPorTamano);
+    ODOO_SIZES.forEach((sz) => {
+      if (!precios[sz]) precios[sz] = { tipo: "fijo", precio: 0 };
+    });
+    setServicioForm({
+      name: s.name,
+      codigo: s.codigo,
+      descripcion: s.descripcion,
+      buffer: s.bufferMinutos || 0,
+      activo: s.activo !== false,
+      duraciones: dur,
+      precios,
+    });
     setServicioModalOpen(true);
   };
 
@@ -179,7 +207,9 @@ export function AdminManagementView({
     const payload: ServicioPayload = {
       name: servicioForm.name,
       codigo: servicioForm.codigo || slugify(servicioForm.name),
+      descripcion: servicioForm.descripcion,
       duracion_por_tamano: JSON.stringify(servicioForm.duraciones),
+      precio_por_tamano: JSON.stringify(servicioForm.precios),
       buffer_minutos: Number(servicioForm.buffer) || 0,
       active: servicioForm.activo,
     };
@@ -195,20 +225,34 @@ export function AdminManagementView({
     }
   };
 
-  // SIZES used for service pricing matrices
-  const SIZES_FOR_PRICING = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante"];
-  const ODOO_SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"];
+  // SIZES for services
+  const ODOO_SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante"];
+
+  const [showInactive, setShowInactive] = useState(false);
+
+  const buildServicioPayload = (s: OdooService, active: boolean): ServicioPayload => ({
+    name: s.name,
+    codigo: s.codigo,
+    descripcion: s.descripcion,
+    duracion_por_tamano: s.duracionPorTamano,
+    precio_por_tamano: s.precioPorTamano,
+    buffer_minutos: s.bufferMinutos,
+    active,
+  });
+
+  const handleDeactivateServicio = async (s: OdooService) => {
+    if (!window.confirm(`¿Eliminar "${s.name}"? Dejará de verse y ya no se podrá agendar, pero se conserva para el historial.`)) return;
+    await onUpdateServicio(s.id, buildServicioPayload(s, false));
+  };
+
+  const handleReactivateServicio = async (s: OdooService) => {
+    await onUpdateServicio(s.id, buildServicioPayload(s, true));
+  };
 
   // Category list for products
   const PRODUCT_CATEGORIES = ["Cosmética", "Accesorios", "Farmacia", "Alimentación", "Snacks", "Otros"];
 
   // Filtered lists
-  const filteredServices = services.filter(
-    (s) =>
-      s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.desc.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   const filteredProducts = products.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -221,37 +265,6 @@ export function AdminManagementView({
       o.contact.toLowerCase().includes(searchQuery.toLowerCase()) ||
       o.phone.includes(searchQuery)
   );
-
-  // Handle service saving
-  const handleSaveServiceClick = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingService?.title) return;
-    setIsSaving(true);
-    try {
-      const defaultPricing: Record<string, ServicePricing> = {
-        Toy: { priceDisp: "30,00 €", priceNum: 30, durationDisp: "90 min", durationMin: 90 },
-        Pequeño: { priceDisp: "35,00 €", priceNum: 35, durationDisp: "90 min", durationMin: 90 },
-        Mediano: { priceDisp: "40,00 €", priceNum: 40, durationDisp: "90 min", durationMin: 90 },
-        Grande: { priceDisp: "45,00 €", priceNum: 45, durationDisp: "120 min", durationMin: 120 },
-        Gigante: { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-      };
-
-      const finalService: Service = {
-        id: editingService.id || `srv_${Date.now()}`,
-        title: editingService.title,
-        desc: editingService.desc || "",
-        pricing: editingService.pricing || defaultPricing,
-      };
-
-      // Close the modal instantly so the user has immediate feedback and the screen closes
-      setEditingService(null);
-      await onSaveService(finalService);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   // Handle product saving
   const handleSaveProductClick = async (e: React.FormEvent) => {
@@ -373,38 +386,14 @@ export function AdminManagementView({
 
         {/* Action button corresponding to active view */}
         <div className="flex flex-wrap gap-2.5">
-          {activeTab === "services" && (
-            <>
-              {onResetServicesToDefault && (
-                <button
-                  onClick={onResetServicesToDefault}
-                  className="bg-warm-terracotta/10 hover:bg-warm-terracotta text-warm-terracotta hover:text-white border border-warm-terracotta/20 px-4 py-2.5 rounded-full font-sans text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-2 cursor-pointer"
-                  title="Restablecer los 7 Servicios estándar"
-                >
-                  <span className="material-symbols-outlined text-base">restore</span>
-                  <span>Restaurar Servicios</span>
-                </button>
-              )}
-              <button
-                onClick={() =>
-                  setEditingService({
-                    title: "",
-                    desc: "",
-                    pricing: {
-                      Toy: { priceDisp: "30,00 €", priceNum: 30, durationDisp: "90 min", durationMin: 90 },
-                      Pequeño: { priceDisp: "35,00 €", priceNum: 35, durationDisp: "90 min", durationMin: 90 },
-                      Mediano: { priceDisp: "40,00 €", priceNum: 40, durationDisp: "90 min", durationMin: 90 },
-                      Grande: { priceDisp: "45,00 €", priceNum: 45, durationDisp: "120 min", durationMin: 120 },
-                      Gigante: { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-                    },
-                  })
-                }
-                className="bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-full font-sans text-xs font-bold shadow-sm flex items-center gap-2 cursor-pointer transition-transform duration-200 hover:scale-102"
-              >
-                <span className="material-symbols-outlined text-base">add_circle</span>
-                <span>Nuevo Servicio</span>
-              </button>
-            </>
+          {activeTab === "servicios" && (
+            <button
+              onClick={openNewServicio}
+              className="bg-primary hover:bg-primary-dark text-white px-4 py-2.5 rounded-full font-sans text-xs font-bold shadow-sm flex items-center gap-2 cursor-pointer transition-transform duration-200 hover:scale-102"
+            >
+              <span className="material-symbols-outlined text-base">add_circle</span>
+              <span>Nuevo Servicio</span>
+            </button>
           )}
 
           {activeTab === "products" && (
@@ -432,17 +421,17 @@ export function AdminManagementView({
       <div className="flex border-b border-outline-variant/30 mb-6 gap-2 overflow-x-auto whitespace-nowrap scrollbar-none">
         <button
           onClick={() => {
-            setActiveTab("services");
+            setActiveTab("servicios");
             setSearchQuery("");
           }}
           className={`px-4 py-2.5 font-sans text-xs font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeTab === "services"
+            activeTab === "servicios"
               ? "border-primary text-primary"
               : "border-transparent text-outline hover:text-primary"
           }`}
         >
           <span className="material-symbols-outlined text-base">spa</span>
-          <span>Servicios ({services.length})</span>
+          <span>Servicios ({odooServicios.length})</span>
         </button>
 
         <button
@@ -458,21 +447,6 @@ export function AdminManagementView({
         >
           <span className="material-symbols-outlined text-base">inventory</span>
           <span>Artículos con Stock ({products.length})</span>
-        </button>
-
-        <button
-          onClick={() => {
-            setActiveTab("agenda");
-            setSearchQuery("");
-          }}
-          className={`px-4 py-2.5 font-sans text-xs font-extrabold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-            activeTab === "agenda"
-              ? "border-primary text-primary"
-              : "border-transparent text-outline hover:text-primary"
-          }`}
-        >
-          <span className="material-symbols-outlined text-base">schedule</span>
-          <span>Servicios &amp; Buffer ({odooServicios.length})</span>
         </button>
 
         {userRole === "administrador" && (
@@ -495,88 +469,18 @@ export function AdminManagementView({
         </div>
 
       {/* Search Bar */}
-      {(activeTab === "services" || activeTab === "products") && (
+      {activeTab === "products" && (
         <div className="mb-6 relative">
           <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-lg">
             search
           </span>
           <input
             type="text"
-            placeholder={`Buscar en ${
-              activeTab === "services" ? "servicios..." : "artículos..."
-            }`}
+            placeholder="Buscar en artículos..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-outline-variant/40 rounded-full text-xs text-on-surface bg-white/50 focus:outline-none focus:border-primary focus:bg-white focus:ring-1 focus:ring-primary transition-all"
           />
-        </div>
-      )}
-
-      {/* 1. SERVICES TAB CONTENT */}
-      {activeTab === "services" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredServices.map((srv) => (
-            <div
-              key={srv.id}
-              className="bg-white border border-outline-variant/30 rounded-[2rem] p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow"
-            >
-              <div className="flex justify-between items-start gap-4">
-                <div>
-                  <h3 className="font-serif text-base font-bold text-primary">{srv.title}</h3>
-                  <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-2">{srv.desc}</p>
-                </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <button
-                    onClick={() => setEditingService(srv)}
-                    className="p-1 px-2.5 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-full text-[10px] font-sans font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1"
-                    title="Editar Servicio"
-                  >
-                    <span className="material-symbols-outlined text-[13px]">edit</span>
-                    <span>Modificar</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`¿Seguro que quieres eliminar el servicio "${srv.title}"?`)) {
-                        onDeleteService(srv.id);
-                      }
-                    }}
-                    className="p-1 px-2.5 bg-warm-terracotta/10 text-warm-terracotta hover:bg-warm-terracotta hover:text-white rounded-full text-[10px] font-sans font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1"
-                    title="Eliminar Servicio"
-                  >
-                    <span className="material-symbols-outlined text-[13px]">delete</span>
-                    <span>Borrar</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Min pricing matrix grid */}
-              <div className="pt-3 border-t border-outline-variant/10">
-                <p className="text-[10px] uppercase font-bold text-outline tracking-wider mb-2">
-                  Matriz de Tarifas por Tamaño Le Petit Can
-                </p>
-                <div className="grid grid-cols-5 gap-1.5 text-center">
-                  {SIZES_FOR_PRICING.map((sz) => {
-                    const priceInfo = srv.pricing[sz];
-                    return (
-                      <div key={sz} className="p-2 bg-ivory-base/40 rounded-xl border border-outline-variant/10">
-                        <span className="font-sans font-extrabold text-[9px] text-primary block truncate">{sz}</span>
-                        <span className="font-mono text-[9px] font-bold text-secondary block mt-0.5 truncate" title={priceInfo?.priceDisp}>
-                          {priceInfo?.priceNum ? `${priceInfo.priceNum}€` : "Custom"}
-                        </span>
-                        <span className="text-[8px] text-outline block mt-0.5 truncate" title={priceInfo?.durationDisp}>
-                          {priceInfo?.durationMin ? `${priceInfo.durationMin}'` : "-"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {filteredServices.length === 0 && (
-            <p className="text-xs text-outline italic text-center col-span-2 py-6">No se encontraron servicios.</p>
-          )}
         </div>
       )}
 
@@ -687,61 +591,87 @@ export function AdminManagementView({
         </div>
       )}
 
-      {/* SERVICIOS & BUFFER (Odoo agenda) TAB CONTENT */}
-      {activeTab === "agenda" && (
+      {/* SERVICIOS TAB CONTENT (unificado) */}
+      {activeTab === "servicios" && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-xs text-on-surface-variant max-w-2xl">
-              Duración por tamaño y <b>buffer</b> (minutos de preparación/descanso después de cada servicio). El buffer se suma a la duración real al agendar y al calcular la disponibilidad.
+              Nombre, descripción, precio y duración por tamaño, más el <b>buffer</b> (descanso/preparación tras cada servicio). El buffer se suma a la duración al agendar y al calcular la disponibilidad.
             </p>
-            <button
-              onClick={openNewServicio}
-              className="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white font-sans text-xs font-bold rounded-full cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              <span className="material-symbols-outlined text-base">add_circle</span> Nuevo servicio
-            </button>
+            <label className="flex items-center gap-2 text-[11px] font-bold text-on-surface cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="rounded border-outline-variant text-primary focus:ring-primary accent-primary h-4 w-4"
+              />
+              Ver desactivados
+            </label>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {odooServicios.map((s) => {
-              const dur = parseDuraciones(s.duracionPorTamano);
-              const inactivo = s.activo === false;
-              return (
-                <div key={s.id} className={`bg-white border rounded-[2rem] p-5 space-y-3 shadow-sm ${inactivo ? "border-outline-variant/20 opacity-70" : "border-outline-variant/30"}`}>
-                  <div className="flex justify-between items-start gap-3">
-                    <div>
-                      <h3 className="font-serif text-base font-bold text-primary flex items-center gap-2">
-                        {s.name}
-                        {inactivo && <span className="text-[9px] font-sans bg-stone-200 text-stone-600 px-2 py-0.5 rounded-full uppercase">Inactivo</span>}
-                      </h3>
-                      <p className="text-[10px] font-mono text-outline">{s.codigo}</p>
+            {odooServicios
+              .filter((s) => (showInactive ? true : s.activo !== false))
+              .map((s) => {
+                const dur = parseDuraciones(s.duracionPorTamano);
+                const precios = parsePrecios(s.precioPorTamano);
+                const inactivo = s.activo === false;
+                return (
+                  <div key={s.id} className={`bg-white border rounded-[2rem] p-5 space-y-3 shadow-sm ${inactivo ? "border-outline-variant/20 opacity-75" : "border-outline-variant/30"}`}>
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-serif text-base font-bold text-primary flex items-center gap-2 flex-wrap">
+                          {s.name}
+                          {inactivo && <span className="text-[9px] font-sans bg-stone-200 text-stone-600 px-2 py-0.5 rounded-full uppercase">Inactivo</span>}
+                        </h3>
+                        <p className="text-[10px] font-mono text-outline">{s.codigo}</p>
+                        {s.descripcion && <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-2">{s.descripcion}</p>}
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        {!inactivo ? (
+                          <button
+                            onClick={() => handleDeactivateServicio(s)}
+                            className="p-1.5 bg-warm-terracotta/10 text-warm-terracotta hover:bg-warm-terracotta hover:text-white rounded-full cursor-pointer transition-colors"
+                            title="Eliminar (desactivar)"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">delete</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleReactivateServicio(s)}
+                            className="p-1.5 bg-green-50 text-green-700 hover:bg-green-600 hover:text-white rounded-full cursor-pointer transition-colors"
+                            title="Reactivar"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">restore</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openEditServicio(s)}
+                          className="p-1 px-2.5 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-full text-[10px] font-sans font-bold transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">edit</span> Modificar
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => openEditServicio(s)}
-                      className="p-1 px-2.5 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-full text-[10px] font-sans font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-[13px]">edit</span> Modificar
-                    </button>
-                  </div>
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {ODOO_SIZES.map((sz) => (
-                      <span key={sz} className="text-[9px] font-bold text-on-surface-variant bg-ivory-base rounded-full px-2 py-1 border border-outline-variant/10">
-                        {sz}: {dur[sz] !== undefined ? `${dur[sz]}'` : "—"}
-                      </span>
-                    ))}
-                  </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ODOO_SIZES.map((sz) => (
+                        <span key={sz} className="text-[9px] font-bold text-on-surface-variant bg-ivory-base rounded-full px-2 py-1 border border-outline-variant/10">
+                          {sz}: {formatPrecio(precios[sz])} · {dur[sz] !== undefined ? `${dur[sz]}'` : "—"}
+                        </span>
+                      ))}
+                    </div>
 
-                  <div className="pt-2 border-t border-outline-variant/10 flex items-center gap-2 text-[11px] font-bold">
-                    <span className="material-symbols-outlined text-[14px] text-secondary">hourglass_empty</span>
-                    <span className="text-on-surface-variant">Buffer: <span className="text-primary">{s.bufferMinutos} min</span></span>
+                    <div className="pt-2 border-t border-outline-variant/10 flex items-center gap-2 text-[11px] font-bold">
+                      <span className="material-symbols-outlined text-[14px] text-secondary">hourglass_empty</span>
+                      <span className="text-on-surface-variant">Buffer: <span className="text-primary">{s.bufferMinutos} min</span></span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
             {odooServicios.length === 0 && (
-              <p className="text-xs text-outline italic text-center col-span-2 py-8">No hay servicios configurados en la agenda.</p>
+              <p className="text-xs text-outline italic text-center col-span-2 py-8">No hay servicios configurados.</p>
             )}
           </div>
         </div>
@@ -1049,16 +979,16 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
 
       {/* ==================================== MODAL EDITORS ==================================== */}
 
-      {/* SERVICIO DE AGENDA (Odoo) MODAL */}
+      {/* SERVICIO MODAL (unificado) */}
       {servicioModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-sm overflow-y-auto" onClick={() => setServicioModalOpen(false)}>
-          <div className="bg-white rounded-[2rem] max-w-lg w-full p-6 md:p-8 shadow-2xl border border-outline-variant/30 text-left relative animate-in fade-in duration-200 my-8 max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-[2rem] max-w-2xl w-full p-6 md:p-8 shadow-2xl border border-outline-variant/30 text-left relative animate-in fade-in duration-200 my-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setServicioModalOpen(false)} className="absolute top-6 right-6 text-outline hover:text-primary cursor-pointer">
               <span className="material-symbols-outlined text-xl">close</span>
             </button>
 
-            <h3 className="font-serif text-xl font-bold text-primary mb-1">{editingOdooServicio ? "Editar servicio de agenda" : "Nuevo servicio de agenda"}</h3>
-            <p className="text-xs text-on-surface-variant mb-5">Duración por tamaño y buffer de preparación tras cada servicio.</p>
+            <h3 className="font-serif text-xl font-bold text-primary mb-1">{editingOdooServicio ? "Editar servicio" : "Nuevo servicio"}</h3>
+            <p className="text-xs text-on-surface-variant mb-5">Nombre, descripción, precio y duración por tamaño, buffer y estado.</p>
 
             <div className="space-y-4">
               <div>
@@ -1066,8 +996,19 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
                 <input
                   value={servicioForm.name}
                   onChange={(e) => setServicioForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Ej: Baño de Hidratación Profunda"
+                  placeholder="Ej: Baño"
                   className="w-full px-4 py-2 border border-outline-variant/40 rounded-full text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">Descripción corta</label>
+                <textarea
+                  value={servicioForm.descripcion}
+                  onChange={(e) => setServicioForm((f) => ({ ...f, descripcion: e.target.value }))}
+                  rows={2}
+                  placeholder="Explica en qué consiste el servicio..."
+                  className="w-full px-4 py-2 border border-outline-variant/40 rounded-2xl text-xs text-on-surface focus:outline-none focus:border-primary"
                 />
               </div>
 
@@ -1082,25 +1023,100 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
               </div>
 
               <div className="border-t border-outline-variant/10 pt-3">
-                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-2">Duración por tamaño (minutos)</label>
-                <div className="space-y-2">
-                  {ODOO_SIZES.map((sz) => (
-                    <div key={sz} className="flex items-center justify-between gap-3 text-xs">
-                      <span className="font-bold text-on-surface-variant w-32">{sz}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={servicioForm.duraciones[sz] ?? 0}
-                        onChange={(e) =>
-                          setServicioForm((f) => ({
-                            ...f,
-                            duraciones: { ...f.duraciones, [sz]: parseInt(e.target.value, 10) || 0 },
-                          }))
-                        }
-                        className="w-24 px-3 py-1.5 border border-outline-variant/40 rounded-full text-xs text-on-surface text-center focus:outline-none focus:border-primary"
-                      />
-                    </div>
-                  ))}
+                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-2">Precio y duración por tamaño</label>
+                <div className="space-y-3">
+                  {ODOO_SIZES.map((sz) => {
+                    const p: PrecioTamano = servicioForm.precios[sz] || { tipo: "fijo", precio: 0 };
+                    return (
+                      <div key={sz} className="p-3 rounded-xl border border-outline-variant/10 bg-ivory-base/30 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-bold text-on-surface-variant">{sz}</span>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={p.tipo}
+                              onChange={(e) => {
+                                const t = e.target.value as PrecioTipo;
+                                setServicioForm((f) => ({
+                                  ...f,
+                                  precios: {
+                                    ...f.precios,
+                                    [sz]: t === "rango" ? { tipo: t, min: p.min ?? 0, max: p.max ?? 0 } : t === "hora" ? { tipo: t, precio: p.precio ?? 0, minimoMin: 120 } : { tipo: t, precio: p.precio ?? 0 },
+                                  },
+                                }));
+                              }}
+                              className="px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+                            >
+                              <option value="fijo">Precio fijo</option>
+                              <option value="rango">Rango (min–max)</option>
+                              <option value="hora">€ / hora</option>
+                            </select>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                value={servicioForm.duraciones[sz] ?? 0}
+                                onChange={(e) =>
+                                  setServicioForm((f) => ({ ...f, duraciones: { ...f.duraciones, [sz]: parseInt(e.target.value, 10) || 0 } }))
+                                }
+                                className="w-20 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
+                              />
+                              <span className="text-[10px] text-outline">min</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {p.tipo === "fijo" && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-outline">Precio (€)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={p.precio ?? 0}
+                              onChange={(e) =>
+                                setServicioForm((f) => ({ ...f, precios: { ...f.precios, [sz]: { ...p, precio: parseInt(e.target.value, 10) || 0 } } }))
+                              }
+                              className="w-24 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
+                            />
+                          </div>
+                        )}
+
+                        {p.tipo === "rango" && (
+                          <div className="flex items-center gap-2 text-[10px] text-outline">
+                            <span>De</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={p.min ?? 0}
+                              onChange={(e) => setServicioForm((f) => ({ ...f, precios: { ...f.precios, [sz]: { ...p, min: parseInt(e.target.value, 10) || 0 } } }))}
+                              className="w-20 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
+                            />
+                            <span>a</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={p.max ?? 0}
+                              onChange={(e) => setServicioForm((f) => ({ ...f, precios: { ...f.precios, [sz]: { ...p, max: parseInt(e.target.value, 10) || 0 } } }))}
+                              className="w-20 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
+                            />
+                            <span>€</span>
+                          </div>
+                        )}
+
+                        {p.tipo === "hora" && (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              value={p.precio ?? 0}
+                              onChange={(e) => setServicioForm((f) => ({ ...f, precios: { ...f.precios, [sz]: { ...p, precio: parseInt(e.target.value, 10) || 0 } } }))}
+                              className="w-24 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
+                            />
+                            <span className="text-[10px] text-outline">€ / hora · (mín. {p.minimoMin ?? 120} min)</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1135,156 +1151,6 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 1. SERVICE MODAL EDITOR */}
-      {editingService && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 md:p-8 shadow-2xl border border-outline-variant/30 text-left relative animate-in fade-in duration-200 my-8">
-            <button
-              onClick={() => setEditingService(null)}
-              className="absolute top-6 right-6 text-outline hover:text-primary active:scale-90 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-xl">close</span>
-            </button>
-
-            <h3 className="font-serif text-xl font-bold text-primary mb-1">
-              {editingService.id ? "Editar Servicio" : "Nuevo Servicio de Le Petit Can"}
-            </h3>
-            <p className="text-xs text-on-surface-variant mb-5">
-              Configura los detalles del servicio y los precios/tiempos asociados a cada tamaño.
-            </p>
-
-            <form onSubmit={handleSaveServiceClick} className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">
-                  Nombre del Servicio (Español)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingService.title || ""}
-                  onChange={(e) => setEditingService((prev) => ({ ...prev, title: e.target.value }))}
-                  placeholder="Ej: Baño de Hidratación Profunda"
-                  className="w-full px-4 py-2 border border-outline-variant/40 rounded-full text-xs text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-background"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">
-                  Descripción Corta
-                </label>
-                <textarea
-                  value={editingService.desc || ""}
-                  onChange={(e) => setEditingService((prev) => ({ ...prev, desc: e.target.value }))}
-                  placeholder="Explica qué incluye la cosmética, secado o retoques..."
-                  rows={2}
-                  className="w-full px-4 py-2 border border-outline-variant/40 rounded-2xl text-xs text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-background"
-                />
-              </div>
-
-              {/* Matrix of prices by size */}
-              <div className="space-y-2 border-t border-outline-variant/10 pt-3">
-                <label className="text-[10px] font-bold text-outline uppercase tracking-wider block mb-1">
-                  Matriz de Tarifas por Tamaño
-                </label>
-                <div className="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
-                  {SIZES_FOR_PRICING.map((sz) => {
-                    const priceVal = editingService.pricing?.[sz] || {
-                      priceDisp: "0,00 €",
-                      priceNum: 0,
-                      durationDisp: "60 min",
-                      durationMin: 60,
-                    };
-
-                    return (
-                      <div
-                        key={sz}
-                        className="p-3 bg-ivory-base/40 border border-outline-variant/10 rounded-xl grid grid-cols-1 sm:grid-cols-4 gap-2 items-center text-xs"
-                      >
-                        <span className="font-sans font-extrabold text-[#755848] truncate">{sz}</span>
-                        <div>
-                          <input
-                            type="number"
-                            required
-                            placeholder="Precio Num"
-                            value={priceVal.priceNum || 0}
-                            onChange={(e) => {
-                              const num = parseFloat(e.target.value) || 0;
-                              const currentPricing = { ...editingService.pricing };
-                              currentPricing[sz] = {
-                                ...priceVal,
-                                priceNum: num,
-                                priceDisp: priceVal.isHourly ? `${num.toFixed(2).replace(".", ",")} € / h` : `${num.toFixed(2).replace(".", ",")} €`,
-                              };
-                              setEditingService((prev) => ({ ...prev, pricing: currentPricing }));
-                            }}
-                            className="w-full px-2.5 py-1.5 border rounded-lg text-center"
-                          />
-                        </div>
-                        <div>
-                          <input
-                            type="number"
-                            required
-                            placeholder="Minutos"
-                            value={priceVal.durationMin || 0}
-                            onChange={(e) => {
-                              const min = parseInt(e.target.value) || 0;
-                              const currentPricing = { ...editingService.pricing };
-                              currentPricing[sz] = {
-                                ...priceVal,
-                                durationMin: min,
-                                durationDisp: `${min} min`,
-                              };
-                              setEditingService((prev) => ({ ...prev, pricing: currentPricing }));
-                            }}
-                            className="w-full px-2.5 py-1.5 border rounded-lg text-center"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1 pl-1">
-                          <input
-                            type="checkbox"
-                            className="rounded border-outline-variant text-primary focus:ring-primary accent-primary h-3.5 w-3.5"
-                            checked={priceVal.isHourly || false}
-                            onChange={(e) => {
-                              const val = e.target.checked;
-                              const currentPricing = { ...editingService.pricing };
-                              const num = priceVal.priceNum || 0;
-                              currentPricing[sz] = {
-                                ...priceVal,
-                                isHourly: val,
-                                priceDisp: val ? `${num} € / h (mín. 120')` : `${num.toFixed(2).replace(".", ",")} €`,
-                              };
-                              setEditingService((prev) => ({ ...prev, pricing: currentPricing }));
-                            }}
-                          />
-                          <span className="text-[10px] text-outline font-semibold">Por Hora</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4 border-t border-outline-variant/15">
-                <button
-                  type="button"
-                  onClick={() => setEditingService(null)}
-                  className="flex-1 py-3 border border-outline-variant/40 rounded-full font-sans text-xs font-bold hover:bg-background block text-center cursor-pointer text-on-surface"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex-1 py-3 bg-primary text-white rounded-full font-sans text-xs font-bold hover:opacity-90 block text-center cursor-pointer"
-                >
-                  {isSaving ? "Guardando..." : "Guardar Servicio"}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

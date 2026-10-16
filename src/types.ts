@@ -33,15 +33,29 @@ export interface OdooService {
   id: string;
   codigo: string;
   name: string;
+  descripcion: string;
   duracionPorTamano: string;
+  precioPorTamano: string;
   bufferMinutos: number;
   activo: boolean;
+}
+
+export type PrecioTipo = "fijo" | "rango" | "hora";
+
+export interface PrecioTamano {
+  tipo: PrecioTipo;
+  precio?: number;
+  min?: number;
+  max?: number;
+  minimoMin?: number;
 }
 
 export interface ServicioPayload {
   name: string;
   codigo: string;
+  descripcion: string;
   duracion_por_tamano: string;
+  precio_por_tamano: string;
   buffer_minutos: number;
   active: boolean;
 }

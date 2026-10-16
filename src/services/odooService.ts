@@ -1,4 +1,4 @@
-import { Owner, Pet, Appointment, VisitHistory, OdooService, ServicioPayload, Disponibilidad, Trabajador, Configuracion, Bloqueo, HorarioBloque } from "../types";
+import { Owner, Pet, Appointment, VisitHistory, OdooService, ServicioPayload, Disponibilidad, Trabajador, Configuracion, Bloqueo, HorarioBloque, Service, ServicePricing, PrecioTamano } from "../types";
 
 const BASE = import.meta.env.VITE_N8N_BASE_URL || "https://n8n-n8n-test.hmrhwx.easypanel.host/webhook";
 const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67";
@@ -267,8 +267,74 @@ export function serializeHorario(h: Record<string, HorarioBloque[]>): string {
 
 // ========== SERVICES ==========
 
+const TAMANOS = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante"];
+
+export function parsePrecios(text?: string): Record<string, PrecioTamano> {
+  if (!text) return {};
+  try {
+    const p = JSON.parse(String(text).replace(/<[^>]*>/g, ""));
+    if (p && typeof p === "object") return p as Record<string, PrecioTamano>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+export function parseDuraciones(text?: string): Record<string, number> {
+  if (!text) return {};
+  try {
+    const p = JSON.parse(String(text || "").replace(/<[^>]*>/g, ""));
+    if (p && typeof p === "object") return p as Record<string, number>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+export function formatPrecio(p: PrecioTamano | undefined): string {
+  if (!p) return "—";
+  if (p.tipo === "rango") return `${p.min ?? 0}€ – ${p.max ?? 0}€`;
+  if (p.tipo === "hora") return `${p.precio ?? 0}€ / h (mín. ${p.minimoMin ?? 120}')`;
+  return `${p.precio ?? 0},00 €`;
+}
+
+export function odooServiceToService(s: OdooService): Service {
+  const dur = parseDuraciones(s.duracionPorTamano);
+  const precios = parsePrecios(s.precioPorTamano);
+  const pricing: Record<string, ServicePricing> = {};
+  for (const sz of TAMANOS) {
+    const durationMin = Number(dur[sz]) || 0;
+    const p = precios[sz] || precios["Toy"];
+    const isHourly = p?.tipo === "hora";
+    const priceNum = p?.tipo === "rango" ? (p.min ?? 0) as number : (p?.precio ?? 0);
+    pricing[sz] = {
+      priceDisp: formatPrecio(p),
+      priceNum,
+      durationDisp: `${durationMin} min`,
+      durationMin,
+      isHourly,
+    };
+  }
+  return {
+    id: s.codigo || s.id,
+    title: s.name,
+    desc: s.descripcion,
+    pricing,
+  };
+}
+
 export async function getServices(): Promise<OdooService[]> {
-  return get<OdooService[]>("/get-services");
+  const list = await get<any[]>("/get-services");
+  return list.map((s) => ({
+    id: String(s.id),
+    codigo: s.codigo || "",
+    name: s.name || "",
+    descripcion: s.descripcion || "",
+    duracionPorTamano: s.duracionPorTamano || "",
+    precioPorTamano: s.precioPorTamano || "",
+    bufferMinutos: Number(s.bufferMinutos) || 0,
+    activo: s.activo !== false,
+  }));
 }
 
 export async function createServicio(data: ServicioPayload): Promise<any> {

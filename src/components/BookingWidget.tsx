@@ -42,112 +42,19 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
   // Booking Form wizard step state: 1: Service, 2: Date & Time, 3: Dog Info & Contact, 4: Success Receipt
   const [step, setStep] = useState<number>(1);
 
-  // Available luxurious treatments with real prices from www.lepetitcan.es
-  const DEFAULT_SERVICES = [
-    {
-      id: "baño",
-      title: "Baño",
-      desc: "Cosmética natural nutritiva adaptada, secado manual suave libre de estrés, limpieza de oídos y corte de uñas básico.",
-      pricing: {
-        "Toy": { priceDisp: "30,00 €", priceNum: 30, durationDisp: "90 min", durationMin: 90 },
-        "Pequeño": { priceDisp: "35,00 €", priceNum: 35, durationDisp: "90 min", durationMin: 90 },
-        "Mediano": { priceDisp: "40,00 €", priceNum: 40, durationDisp: "90 min", durationMin: 90 },
-        "Grande": { priceDisp: "45,00 €", priceNum: 45, durationDisp: "120 min", durationMin: 120 },
-        "Gigante": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Pequeño Diamante": { priceDisp: "30,00 €", priceNum: 30, durationDisp: "90 min", durationMin: 90 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    },
-    {
-      id: "baño_arreglo",
-      title: "Baño + Arreglo",
-      desc: "Tratamiento higiénico completo con retoques en zonas clave: perfilado de carita, patas y zona higiénica.",
-      pricing: {
-        "Toy": { priceDisp: "35,00 €", priceNum: 35, durationDisp: "90 min", durationMin: 90 },
-        "Pequeño": { priceDisp: "40,00 €", priceNum: 40, durationDisp: "90 min", durationMin: 90 },
-        "Mediano": { priceDisp: "45,00 €", priceNum: 45, durationDisp: "90 min", durationMin: 90 },
-        "Grande": { priceDisp: "50,00 € - 55,00 €", priceNum: 52, durationDisp: "120 min", durationMin: 120 },
-        "Gigante": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Pequeño Diamante": { priceDisp: "35,00 €", priceNum: 35, durationDisp: "90 min", durationMin: 90 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    },
-    {
-      id: "corte_mixto",
-      title: "Corte Mixto",
-      desc: "Estilismo higiénico combinado: máquina en zonas de confort y tijera para definición estética en patas y cabeza.",
-      pricing: {
-        "Toy": { priceDisp: "40,00 €", priceNum: 40, durationDisp: "120 min", durationMin: 120 },
-        "Pequeño": { priceDisp: "45,00 €", priceNum: 45, durationDisp: "120 min", durationMin: 120 },
-        "Mediano": { priceDisp: "50,00 €", priceNum: 50, durationDisp: "120 min", durationMin: 120 },
-        "Grande": { priceDisp: "55,00 € - 60,00 €", priceNum: 57, durationDisp: "120 min", durationMin: 120 },
-        "Gigante": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Pequeño Diamante": { priceDisp: "40,00 €", priceNum: 40, durationDisp: "120 min", durationMin: 120 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    },
-    {
-      id: "corte_tijera",
-      title: "Corte Tijera",
-      desc: "Corte artesanal premium esculpido totalmente a tijera, ajustado a los estándares de raza de forma meticulosa.",
-      pricing: {
-        "Toy": { priceDisp: "50,00 €", priceNum: 50, durationDisp: "120 min", durationMin: 120 },
-        "Pequeño": { priceDisp: "50,00 € - 60,00 €", priceNum: 55, durationDisp: "120 min", durationMin: 120 },
-        "Mediano": { priceDisp: "60,00 €", priceNum: 60, durationDisp: "120 min", durationMin: 120 },
-        "Grande": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Gigante": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Pequeño Diamante": { priceDisp: "50,00 €", priceNum: 50, durationDisp: "120 min", durationMin: 120 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    },
-    {
-      id: "strippin",
-      title: "Strippin (Pelo Duro)",
-      desc: "Técnica de arranque manual del pelo de cobertura maduro, protegiendo la salud capilar y los colores de la raza.",
-      pricing: {
-        "Toy": { priceDisp: "45,00 €", priceNum: 45, durationDisp: "120 min", durationMin: 120 },
-        "Pequeño": { priceDisp: "55,00 €", priceNum: 55, durationDisp: "120 min", durationMin: 120 },
-        "Mediano": { priceDisp: "60,00 €", priceNum: 60, durationDisp: "120 min", durationMin: 120 },
-        "Grande": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Gigante": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Pequeño Diamante": { priceDisp: "45,00 €", priceNum: 45, durationDisp: "120 min", durationMin: 120 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    },
-    {
-      id: "deslanado",
-      title: "Deslanado",
-      desc: "Cepillado exhaustivo y oxigenado para razas de doble capa, retirando subpelo muerto sin cortar la cutícula natural.",
-      pricing: {
-        "Toy": { priceDisp: "40,00 € - 45,00 €", priceNum: 42, durationDisp: "120 min", durationMin: 120 },
-        "Pequeño": { priceDisp: "45,00 € - 50,00 €", priceNum: 47, durationDisp: "120 min", durationMin: 120 },
-        "Mediano": { priceDisp: "50,00 €", priceNum: 50, durationDisp: "120 min", durationMin: 120 },
-        "Grande": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Gigante": { priceDisp: "50,00 € / h (mín. 120')", priceNum: 50, durationDisp: "mín. 120 min", durationMin: 120, isHourly: true },
-        "Pequeño Diamante": { priceDisp: "40,00 € - 45,00 €", priceNum: 42, durationDisp: "120 min", durationMin: 120 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    },
-    {
-      id: "uñas",
-      title: "Uñas",
-      desc: "Corte guiado de uñas higiénicas y limado suave.",
-      pricing: {
-        "Toy": { priceDisp: "5,00 €", priceNum: 5, durationDisp: "15 min", durationMin: 15 },
-        "Pequeño": { priceDisp: "7,00 €", priceNum: 7, durationDisp: "15 min", durationMin: 15 },
-        "Mediano": { priceDisp: "9,00 €", priceNum: 9, durationDisp: "15 min", durationMin: 15 },
-        "Grande": { priceDisp: "10,00 €", priceNum: 10, durationDisp: "15 min", durationMin: 15 },
-        "Gigante": { priceDisp: "15,00 €", priceNum: 15, durationDisp: "15 min", durationMin: 15 },
-        "Pequeño Diamante": { priceDisp: "5,00 €", priceNum: 5, durationDisp: "15 min", durationMin: 15 }
-      } as Record<string, { priceDisp: string; priceNum: number; durationDisp: string; durationMin: number; isHourly?: boolean }>
-    }
-  ];
-
-  const activeServices = services && services.length > 0 ? services : DEFAULT_SERVICES;
+  const activeServices = services || [];
 
   // Appointment user selection state
-  const [selectedService, setSelectedService] = useState(activeServices[0]);
+  const [selectedService, setSelectedService] = useState<Service | undefined>(activeServices[0]);
 
   React.useEffect(() => {
     if (services && services.length > 0) {
-      const exists = services.find((s) => s.id === selectedService.id);
+      const exists = services.find((s) => s.id === selectedService?.id);
       if (!exists) {
         setSelectedService(services[0]);
       }
+    } else {
+      setSelectedService(undefined);
     }
   }, [services]);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -283,6 +190,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
 
   // Size pricing multipliers as configured with real Le Petit Can rules
   const getCalculatedPrice = (): number => {
+    if (!selectedService) return 0;
     let sizeKey: string = dogSize;
     if (sizeKey === "Pequeño Diamante") sizeKey = "Toy";
     
@@ -304,6 +212,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
   };
 
   const getCalculatedPriceString = () => {
+    if (!selectedService) return "";
     let sizeKey: string = dogSize;
     if (sizeKey === "Pequeño Diamante") sizeKey = "Toy";
     
@@ -325,6 +234,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    if (!selectedService) return;
 
     // Validation checks
     const finalBreed = breed === "Otro" ? customBreed.trim() : breed.trim();
@@ -422,6 +332,16 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
       setIsSubmitting(false);
     }
   };
+
+  if (!selectedService || activeServices.length === 0) {
+    return (
+      <div className="w-full max-w-4xl mx-auto bg-white rounded-[2.5rem] border border-outline-variant/30 p-10 text-center font-sans text-sm text-on-surface-variant">
+        <span className="material-symbols-outlined text-3xl text-outline/40">spa</span>
+        <p className="font-serif text-lg font-bold text-primary mt-3">Aún no hay servicios disponibles</p>
+        <p className="text-xs text-outline mt-1">Configura tus servicios para poder agendar citas.</p>
+      </div>
+    );
+  }
 
   return (
     <div id="lepetitcan-booking-widget" className="w-full max-w-4xl mx-auto bg-ivory-base/45 rounded-[2.5rem] border border-outline-variant/30 p-6 md:p-8 space-y-6 text-left shadow-[0_15px_40px_rgba(117,88,72,0.03)] animate-in fade-in duration-300">
