@@ -291,10 +291,10 @@ export function parseDuraciones(text?: string): Record<string, number> {
   return {};
 }
 
-export function formatPrecio(p: PrecioTamano | undefined): string {
+export function formatPrecio(p: PrecioTamano | undefined, duracionMin?: number): string {
   if (!p) return "—";
   if (p.tipo === "rango") return `${p.min ?? 0}€ – ${p.max ?? 0}€`;
-  if (p.tipo === "hora") return `${p.precio ?? 0}€ / h (mín. ${p.minimoMin ?? 120}')`;
+  if (p.tipo === "hora") return `${p.precio ?? 0}€ / h (mín. ${duracionMin ?? p.minimoMin ?? 120}')`;
   if (p.tipo === "estimado") return `aprox. ${p.precio ?? 0}€`;
   return `${p.precio ?? 0},00 €`;
 }
@@ -309,7 +309,7 @@ export function odooServiceToService(s: OdooService): Service {
     const isHourly = p?.tipo === "hora";
     const priceNum = p?.tipo === "rango" ? (p.min ?? 0) as number : (p?.precio ?? 0);
     pricing[sz] = {
-      priceDisp: formatPrecio(p),
+      priceDisp: formatPrecio(p, durationMin),
       priceNum,
       durationDisp: `${durationMin} min`,
       durationMin,

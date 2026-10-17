@@ -1041,7 +1041,7 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
                                   ...f,
                                   precios: {
                                     ...f.precios,
-                                    [sz]: t === "rango" ? { tipo: t, min: p.min ?? 0, max: p.max ?? 0 } : t === "hora" ? { tipo: t, precio: p.precio ?? 0, minimoMin: 120 } : { tipo: t, precio: p.precio ?? 0 },
+                                    [sz]: t === "rango" ? { tipo: t, min: p.min ?? 0, max: p.max ?? 0 } : { tipo: t, precio: p.precio ?? 0 },
                                   },
                                 }));
                               }}
@@ -1129,7 +1129,7 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
                               onChange={(e) => setServicioForm((f) => ({ ...f, precios: { ...f.precios, [sz]: { ...p, precio: parseInt(e.target.value, 10) || 0 } } }))}
                               className="w-24 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
                             />
-                            <span className="text-[10px] text-outline">€ / hora · (mín. {p.minimoMin ?? 120} min)</span>
+                            <span className="text-[10px] text-outline">€ / hora · (mín. {servicioForm.duraciones[sz] ?? 0} min)</span>
                           </div>
                         )}
                       </div>
