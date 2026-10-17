@@ -40,7 +40,7 @@ export interface OdooService {
   activo: boolean;
 }
 
-export type PrecioTipo = "fijo" | "rango" | "hora";
+export type PrecioTipo = "fijo" | "estimado" | "rango" | "hora";
 
 export interface PrecioTamano {
   tipo: PrecioTipo;
@@ -57,7 +57,7 @@ export interface ServicioPayload {
   duracion_por_tamano: string;
   precio_por_tamano: string;
   buffer_minutos: number;
-  active: boolean;
+  archivado: boolean;
 }
 
 export interface Trabajador {

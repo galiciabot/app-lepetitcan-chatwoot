@@ -10,7 +10,7 @@
                 <field name="name"/>
                 <field name="codigo"/>
                 <field name="buffer_minutos"/>
-                <field name="active"/>
+                <field name="archivado"/>
             </tree>
         </field>
     </record>
@@ -27,7 +27,7 @@
                     <group>
                         <field name="codigo"/>
                         <field name="buffer_minutos"/>
-                        <field name="active"/>
+                        <field name="archivado"/>
                     </group>
                     <group string="Duración por tamaño (minutos)">
                         <field name="duracion_por_tamano" colspan="2"/>

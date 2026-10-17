@@ -60,6 +60,7 @@ function formatPrecio(p?: PrecioTamano): string {
   if (!p) return "—";
   if (p.tipo === "rango") return `${p.min ?? 0}€ – ${p.max ?? 0}€`;
   if (p.tipo === "hora") return `${p.precio ?? 0}€/h`;
+  if (p.tipo === "estimado") return `aprox. ${p.precio ?? 0}€`;
   return `${p.precio ?? 0}€`;
 }
 
@@ -211,7 +212,7 @@ export function AdminManagementView({
       duracion_por_tamano: JSON.stringify(servicioForm.duraciones),
       precio_por_tamano: JSON.stringify(servicioForm.precios),
       buffer_minutos: Number(servicioForm.buffer) || 0,
-      active: servicioForm.activo,
+      archivado: !servicioForm.activo,
     };
     try {
       if (editingOdooServicio) await onUpdateServicio(editingOdooServicio.id, payload);
@@ -237,7 +238,7 @@ export function AdminManagementView({
     duracion_por_tamano: s.duracionPorTamano,
     precio_por_tamano: s.precioPorTamano,
     buffer_minutos: s.bufferMinutos,
-    active,
+    archivado: !active,
   });
 
   const handleDeactivateServicio = async (s: OdooService) => {
@@ -1047,6 +1048,7 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
                               className="px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
                             >
                               <option value="fijo">Precio fijo</option>
+                              <option value="estimado">Precio estimado</option>
                               <option value="rango">Rango (min–max)</option>
                               <option value="hora">€ / hora</option>
                             </select>
@@ -1077,6 +1079,22 @@ db.collection("configs").doc("integrations").onSnapshot(snap => {
                               }
                               className="w-24 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
                             />
+                          </div>
+                        )}
+
+                        {p.tipo === "estimado" && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-outline">Precio aprox. (€)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={p.precio ?? 0}
+                              onChange={(e) =>
+                                setServicioForm((f) => ({ ...f, precios: { ...f.precios, [sz]: { ...p, precio: parseInt(e.target.value, 10) || 0 } } }))
+                              }
+                              className="w-24 px-2 py-1 border border-outline-variant/30 rounded-lg text-xs text-on-surface text-center bg-white focus:outline-none focus:border-primary"
+                            />
+                            <span className="text-[10px] text-outline italic">puede variar según el manto</span>
                           </div>
                         )}
 

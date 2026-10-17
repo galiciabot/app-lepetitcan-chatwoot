@@ -295,6 +295,7 @@ export function formatPrecio(p: PrecioTamano | undefined): string {
   if (!p) return "—";
   if (p.tipo === "rango") return `${p.min ?? 0}€ – ${p.max ?? 0}€`;
   if (p.tipo === "hora") return `${p.precio ?? 0}€ / h (mín. ${p.minimoMin ?? 120}')`;
+  if (p.tipo === "estimado") return `aprox. ${p.precio ?? 0}€`;
   return `${p.precio ?? 0},00 €`;
 }
 

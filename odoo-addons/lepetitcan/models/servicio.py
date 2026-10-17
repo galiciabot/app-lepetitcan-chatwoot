@@ -29,4 +29,4 @@ class LpcServicio(models.Model):
         'trabajador_id',
         string='Trabajadores habilitados',
     )
-    active = fields.Boolean(string='Activo', default=True)
+    archivado = fields.Boolean(string='Archivado', default=False)
