@@ -17,17 +17,20 @@ function getUpcomingDays(): { date: string; label: string; num: string }[] {
   const weekdays = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   const days: { date: string; label: string; num: string }[] = [];
   const start = new Date();
-  for (let i = 0; i < 30 && days.length < 14; i++) {
+  for (let i = 0; i < 14; i++) {
     const current = new Date();
     current.setDate(start.getDate() + i);
     const dow = current.getDay();
-    if (dow === 0) continue;
     const y = current.getFullYear();
     const mo = String(current.getMonth() + 1).padStart(2, "0");
     const d = String(current.getDate()).padStart(2, "0");
     days.push({ date: `${y}-${mo}-${d}`, label: weekdays[dow], num: String(current.getDate()) });
   }
   return days;
+}
+
+function toIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function ManualBookingView({
@@ -43,6 +46,7 @@ export function ManualBookingView({
   const upcomingDays = getUpcomingDays();
 
   const [ownerId, setOwnerId] = useState("");
+  const [ownerSearch, setOwnerSearch] = useState("");
   const [petId, setPetId] = useState("");
   const [serviceId, setServiceId] = useState(activeServices[0]?.id || "");
   const [size, setSize] = useState<string>("Mediano");
@@ -56,6 +60,11 @@ export function ManualBookingView({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ dogName: string; fecha: string; hora: string; groomer?: string } | null>(null);
 
+  const minDate = toIso(new Date());
+  const maxDateObj = new Date();
+  maxDateObj.setDate(maxDateObj.getDate() + 365);
+  const maxDate = toIso(maxDateObj);
+
   const selectedOwner = owners.find((o) => String(o.id) === String(ownerId));
   const pets = selectedOwner?.pets || [];
   const selectedPet = pets.find((p) => String(p.id) === String(petId));
@@ -63,8 +72,20 @@ export function ManualBookingView({
 
   const servicioIdNum = selectedService && serviceIdByCode ? Number(serviceIdByCode[selectedService.id]) : undefined;
 
+  const filteredOwners = (
+    ownerId
+      ? []
+      : owners.filter((o) => {
+          if (!o.name || o.name === "My Company") return false;
+          const q = ownerSearch.trim().toLowerCase();
+          if (!q) return true;
+          return o.name.toLowerCase().includes(q) || (o.phone || "").includes(q) || (o.contact || "").toLowerCase().includes(q);
+        })
+  ).slice(0, 50);
+
   const handleOwnerChange = (id: string) => {
     setOwnerId(id);
+    setOwnerSearch("");
     setPetId("");
     setSize("Mediano");
   };
@@ -203,16 +224,48 @@ export function ManualBookingView({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block pl-1">Cliente</label>
-            <select
-              value={ownerId}
-              onChange={(e) => handleOwnerChange(e.target.value)}
-              className="w-full px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
-            >
-              <option value="">— Selecciona cliente —</option>
-              {owners.filter((o) => o.name && o.name !== "My Company").map((o) => (
-                <option key={o.id} value={o.id}>{o.name}{o.phone ? ` · ${o.phone}` : ""}</option>
-              ))}
-            </select>
+            {selectedOwner ? (
+              <div className="flex items-center justify-between gap-2 px-4 py-2.5 border border-primary/20 bg-primary/5 rounded-full text-xs text-on-surface">
+                <span className="truncate font-semibold">{selectedOwner.name}{selectedOwner.phone ? ` · ${selectedOwner.phone}` : ""}</span>
+                <button
+                  type="button"
+                  onClick={() => handleOwnerChange("")}
+                  className="text-warm-terracotta hover:bg-warm-terracotta/10 rounded-full p-1 cursor-pointer"
+                  title="Quitar cliente"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <div className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-full text-xs bg-white focus-within:border-primary">
+                  <span className="material-symbols-outlined text-sm text-outline">search</span>
+                  <input
+                    value={ownerSearch}
+                    onChange={(e) => setOwnerSearch(e.target.value)}
+                    placeholder="Buscar por nombre o teléfono…"
+                    className="w-full bg-transparent text-on-surface focus:outline-none"
+                  />
+                </div>
+                <div className="absolute z-20 mt-1 w-full bg-white border border-outline-variant/20 rounded-2xl shadow-lg max-h-56 overflow-y-auto">
+                  {filteredOwners.length === 0 ? (
+                    <p className="text-[11px] text-outline italic px-4 py-3">Sin coincidencias.</p>
+                  ) : (
+                    filteredOwners.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => handleOwnerChange(String(o.id))}
+                        className="w-full text-left px-4 py-2 hover:bg-ivory-base/60 text-xs text-on-surface border-b border-outline-variant/10 last:border-0"
+                      >
+                        <span className="font-semibold">{o.name}</span>
+                        {o.phone ? <span className="text-outline"> · {o.phone}</span> : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block pl-1">Mascota</label>
@@ -261,7 +314,15 @@ export function ManualBookingView({
         {/* Fecha */}
         <div className="space-y-2">
           <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block pl-1">Fecha</label>
-          <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+          <input
+            type="date"
+            value={date}
+            min={minDate}
+            max={maxDate}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full md:max-w-xs px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+          />
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
             {upcomingDays.map((day) => {
               const isActive = date === day.date;
               return (

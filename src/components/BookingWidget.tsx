@@ -61,19 +61,11 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
     }
   }, [services]);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const start = new Date();
-    let added = 0;
-    for (let i = 0; i < 15 && added < 1; i++) {
-      const current = new Date();
-      current.setDate(start.getDate() + i);
-      const dayOfWeek = current.getDay();
-      if (dayOfWeek === 0) continue;
-      const year = current.getFullYear();
-      const month = String(current.getMonth() + 1).padStart(2, "0");
-      const dayCode = String(current.getDate()).padStart(2, "0");
-      return `${year}-${month}-${dayCode}`;
-    }
-    return "2026-06-20";
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const dayCode = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${dayCode}`;
   });
   const [selectedTime, setSelectedTime] = useState<string>("10:45");
   const [workerMode, setWorkerMode] = useState<"cualquiera" | "especifico">("cualquiera");
@@ -205,17 +197,15 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
     setBreed("Otro");
   };
 
-  // Dynamic open booking days (upcoming 6 business days skipping Sundays)
+  // Dynamic open booking days (upcoming 14 days including Sundays)
   const getUpcomingDays = () => {
     const days = [];
     const weekdays = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
     const start = new Date();
-    let added = 0;
-    for (let i = 0; i < 15 && added < 6; i++) {
+    for (let i = 0; i < 14; i++) {
       const current = new Date();
       current.setDate(start.getDate() + i);
       const dayOfWeek = current.getDay();
-      if (dayOfWeek === 0) continue; // Skip Sundays
 
       const year = current.getFullYear();
       const month = String(current.getMonth() + 1).padStart(2, "0");
@@ -228,7 +218,6 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
         num: String(current.getDate()),
         available: true
       });
-      added++;
     }
     return days;
   };

@@ -2507,6 +2507,7 @@ export default function App() {
                 appointments={appointments}
                 owners={owners}
                 trabajadores={trabajadores}
+                bloqueos={bloqueos}
                 onNavigate={setView}
                 userRole={session.role}
                 onSelectClientDetail={handleSelectClientDetail}

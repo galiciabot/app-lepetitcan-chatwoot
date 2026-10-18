@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Appointment, Owner, Trabajador } from "../types";
+import { Appointment, Owner, Trabajador, Bloqueo } from "../types";
 
 interface CalendarViewProps {
   appointments: Appointment[];
   owners: Owner[];
   trabajadores?: Trabajador[];
+  bloqueos?: Bloqueo[];
   onNavigate: (viewId: string) => void;
   userRole?: string;
   onSelectClientDetail?: (ownerName: string, dogName: string) => void;
@@ -32,6 +33,7 @@ export function CalendarView({
   appointments,
   owners,
   trabajadores,
+  bloqueos,
   onNavigate,
   userRole,
   onSelectClientDetail,
@@ -86,6 +88,17 @@ export function CalendarView({
   const filteredAppointments = activeAppointments.filter((ap) =>
     workerFilter === "all" ? true : (ap.trabajadorId || "sin") === workerFilter
   );
+
+  const getBloqueosForDate = (d: Date): Bloqueo[] => {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, "0");
+    const dd = d.getDate().toString().padStart(2, "0");
+    const dateStr = `${y}-${m}-${dd}`;
+    return (bloqueos || []).filter((b) => {
+      if (!b.fechaInicio) return false;
+      return b.fechaInicio <= dateStr && (b.fechaFin || b.fechaInicio) >= dateStr;
+    });
+  };
 
   const getDaysOfActiveWeek = (baseDate: Date): Date[] => {
     const currentDayOfWeek = baseDate.getDay();
@@ -388,6 +401,7 @@ export function CalendarView({
                 if (!cellDate) return <div key={`empty-${index}`} className="aspect-square bg-stone-50/40 rounded-xl"></div>;
                 const dayNum = cellDate.getDate();
                 const appts = getSalonAppointmentsForDate(cellDate);
+                const nBloqueos = getBloqueosForDate(cellDate).length;
                 const isSelected = isSameDay(cellDate, selectedDate);
                 const isToday = isSameDay(cellDate, today);
                 return (
@@ -414,6 +428,14 @@ export function CalendarView({
                           {appts.length} {appts.length === 1 ? "cita" : "citas"}
                         </div>
                         <div className="block sm:hidden w-1.5 h-1.5 rounded-full bg-primary mx-auto"></div>
+                      </div>
+                    )}
+                    {nBloqueos > 0 && (
+                      <div className="w-full text-left">
+                        <div className="hidden sm:block text-[7px] bg-warm-terracotta/15 text-warm-terracotta px-1 py-0.5 rounded text-center truncate font-black mt-1">
+                          {nBloqueos} {nBloqueos === 1 ? "bloqueo" : "bloqueos"}
+                        </div>
+                        <div className="block sm:hidden w-1.5 h-1.5 rounded-full bg-warm-terracotta mx-auto"></div>
                       </div>
                     )}
                   </button>
@@ -458,6 +480,40 @@ export function CalendarView({
             </button>
           ))}
         </div>
+
+        {/* Bloqueos / Descansos del día */}
+        {(() => {
+          const dayBloqueos = getBloqueosForDate(selectedDate).filter(
+            (b) => workerFilter === "all" || !b.trabajadorId || String(b.trabajadorId) === workerFilter
+          );
+          if (dayBloqueos.length === 0) return null;
+          return (
+            <div className="space-y-2">
+              <h4 className="font-sans text-[11px] font-black text-warm-terracotta uppercase tracking-widest flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">block</span>
+                Bloqueos / Descansos
+              </h4>
+              <div className="space-y-2">
+                {dayBloqueos.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex items-center gap-3 bg-warm-terracotta/5 border border-warm-terracotta/20 rounded-2xl px-4 py-2.5"
+                  >
+                    <span className="material-symbols-outlined text-warm-terracotta text-lg">event_busy</span>
+                    <div className="flex-1 text-left">
+                      <p className="font-sans text-xs font-bold text-on-surface">{b.name}</p>
+                      <p className="text-[10px] text-on-surface-variant">
+                        {b.horaInicio ? `${b.horaInicio}–${b.horaFin}` : "Todo el día"}
+                        {" · "}
+                        {b.trabajadorName ? `Trabajador: ${b.trabajadorName}` : "Todo el equipo"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="space-y-4 relative ml-1 md:ml-4">
           <div className="absolute left-6 md:left-20 top-0 bottom-0 w-px bg-outline-variant/30 z-0"></div>
