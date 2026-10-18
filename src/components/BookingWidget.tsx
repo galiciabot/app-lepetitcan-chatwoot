@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Appointment, Service, Owner } from "../types";
+import { Appointment, Service, Owner, Disponibilidad, Trabajador } from "../types";
 import { lookupZoneByZip } from "./ClientDetailView";
+import { getDisponibilidad } from "../services/odooService";
 
 export const SPANISH_DOG_BREEDS = [
   "Otro",
@@ -36,9 +37,11 @@ interface BookingWidgetProps {
   onNavigateBack?: () => void;
   services?: Service[];
   owners?: Owner[];
+  trabajadores?: Trabajador[];
+  serviceIdByCode?: Record<string, string>;
 }
 
-export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, owners }: BookingWidgetProps) {
+export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, owners, trabajadores, serviceIdByCode }: BookingWidgetProps) {
   // Booking Form wizard step state: 1: Service, 2: Date & Time, 3: Dog Info & Contact, 4: Success Receipt
   const [step, setStep] = useState<number>(1);
 
@@ -73,6 +76,10 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
     return "2026-06-20";
   });
   const [selectedTime, setSelectedTime] = useState<string>("10:45");
+  const [workerMode, setWorkerMode] = useState<"cualquiera" | "especifico">("cualquiera");
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>("");
+  const [disponibilidad, setDisponibilidad] = useState<Disponibilidad | null>(null);
+  const [loadingDisp, setLoadingDisp] = useState<boolean>(false);
   const [dogName, setDogName] = useState<string>("");
   const [breed, setBreed] = useState<string>("Otro");
   const [customBreed, setCustomBreed] = useState<string>("");
@@ -98,6 +105,49 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
   const [ownerFacebook, setOwnerFacebook] = useState<string>("");
   const [lopdChecked, setLopdChecked] = useState<boolean>(false);
   const [selectedContactId, setSelectedContactId] = useState<string>("");
+  const activeTrabajadores = (trabajadores || []).filter((t) => t.activo !== false);
+
+  const resolveServiceId = (): number | undefined => {
+    if (!selectedService) return undefined;
+    const idStr = serviceIdByCode?.[selectedService.id];
+    if (idStr && /^\d+$/.test(idStr)) return Number(idStr);
+    return undefined;
+  };
+
+  const servicioIdNum = resolveServiceId();
+
+  React.useEffect(() => {
+    if (!selectedService || !servicioIdNum) {
+      setDisponibilidad(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingDisp(true);
+    const workerId = workerMode === "especifico" && selectedWorkerId ? selectedWorkerId : undefined;
+    getDisponibilidad({
+      fecha: selectedDate,
+      servicioId: servicioIdNum,
+      tamano: dogSize,
+      trabajadorId: workerId,
+    })
+      .then((d) => { if (!cancelled) setDisponibilidad(d); })
+      .catch(() => { if (!cancelled) setDisponibilidad(null); })
+      .finally(() => { if (!cancelled) setLoadingDisp(false); });
+    return () => { cancelled = true; };
+  }, [selectedDate, selectedService, dogSize, workerMode, selectedWorkerId, servicioIdNum]);
+
+  // Slots por trabajador o unión (trabajador por trabajador, sin merge de intervalos)
+  const allWorkers = disponibilidad?.trabajadores || [];
+  const slotMap = new Map<string, { id: string; nombre: string; ocupadoMin: number }[]>();
+  allWorkers.forEach((w) => {
+    (w.slotsInicio || []).forEach((h) => {
+      if (!slotMap.has(h)) slotMap.set(h, []);
+      slotMap.get(h)!.push({ id: String(w.id), nombre: w.nombre, ocupadoMin: w.ocupadoMin || 0 });
+    });
+  });
+  const unionSlots = [...slotMap.keys()].sort();
+  const especificWorker = workerMode === "especifico" ? allWorkers.find((w) => String(w.id) === selectedWorkerId) : undefined;
+  const visibleSlots = workerMode === "especifico" ? [...(especificWorker?.slotsInicio || [])].sort() : unionSlots;
   const [selectedPetIndex, setSelectedPetIndex] = useState<number>(-1);
   const [newPetName, setNewPetName] = useState<string>("");
   const [newPetBreed, setNewPetBreed] = useState<string>("");
@@ -185,9 +235,6 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
 
   const UPCOMING_DAYS = getUpcomingDays();
 
-  // Available reservation hour slots
-  const TIME_SLOTS = ["09:30", "10:45", "11:30", "14:00", "15:15", "16:15", "17:30"];
-
   // Size pricing multipliers as configured with real Le Petit Can rules
   const getCalculatedPrice = (): number => {
     if (!selectedService) return 0;
@@ -252,7 +299,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
 
     const sizeKey = dogSize === "Pequeño Diamante" ? "Toy" : dogSize;
     const priceInfo = selectedService.pricing[sizeKey] || selectedService.pricing["Pequeño"];
-    const duracionTotalMin = priceInfo?.durationMin;
+    const duracionTotalMin = disponibilidad?.duracionTotalMin || priceInfo?.durationMin;
     const ownerSelected = selectedContactId ? (owners || []).find((o) => o.id === selectedContactId) : undefined;
     const petSelected = ownerSelected && selectedPetIndex >= 0 ? ownerSelected.pets?.[selectedPetIndex] : undefined;
 
@@ -281,6 +328,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
       ownerId: selectedContactId || undefined,
       petId: petSelected?.id,
       serviceCode: selectedService.id,
+      trabajadorId: workerMode === "especifico" && selectedWorkerId ? selectedWorkerId : undefined,
       duracionTotalMin,
     };
 
@@ -514,7 +562,43 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
         <div className="space-y-6">
           <div className="space-y-1.5">
             <h3 className="font-serif text-lg font-bold text-primary">2. Elige la fecha y hora disponible</h3>
-            <p className="text-xs text-on-surface-variant">Pulse sobre el día y luego escoja una de las horas disponibles asignadas de forma segura.</p>
+            <p className="text-xs text-on-surface-variant">Pulse sobre el día y escoja la hora. Si prefieres un profesional concreto, selecciónalo.</p>
+          </div>
+
+          <div className="space-y-2.5 p-4 bg-white/70 rounded-3xl border border-outline-variant/15">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setWorkerMode("cualquiera")}
+                className={`px-4 py-2 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${workerMode === "cualquiera" ? "bg-primary text-white border-primary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"}`}
+              >
+                Cualquier disponible
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkerMode("especifico")}
+                className={`px-4 py-2 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${workerMode === "especifico" ? "bg-primary text-white border-primary" : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"}`}
+              >
+                Profesional específico
+              </button>
+            </div>
+            {workerMode === "especifico" && (
+              <select
+                value={selectedWorkerId}
+                onChange={(e) => setSelectedWorkerId(e.target.value)}
+                className="w-full md:max-w-sm px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+              >
+                <option value="">— Elige profesional —</option>
+                {activeTrabajadores.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre}</option>
+                ))}
+              </select>
+            )}
+            {workerMode === "cualquiera" && (
+              <p className="text-[11px] text-on-surface-variant">
+                Verás las horas combinadas de todo el equipo capacitado. Asignaremos al profesional con más espacio libre al confirmar.
+              </p>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -536,7 +620,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
                   >
                     <span className="text-[10px] uppercase tracking-wider font-sans font-bold opacity-80">{day.label}</span>
                     <span className="text-lg font-mono font-bold leading-none">{day.num}</span>
-                    <span className="text-[8px] font-bold translate-y-0.5 uppercase tracking-widest text-[#79c35a]">Libre</span>
+                    <span className="text-[8px] font-bold translate-y-0.5 uppercase tracking-widest text-outline/50">·</span>
                   </button>
                 );
               })}
@@ -547,24 +631,40 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
             <label className="text-xs font-bold text-primary uppercase tracking-wider block pl-2">
               Horas de reserva disponibles
             </label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2.5">
-              {TIME_SLOTS.map((time) => {
-                const isSelected = selectedTime === time;
-                return (
-                  <button
-                    key={time}
-                    onClick={() => setSelectedTime(time)}
-                    className={`py-3 px-1 rounded-full border text-center font-mono text-xs font-semibold transition-all cursor-pointer ${
-                      isSelected
-                        ? "bg-secondary text-white border-secondary transform scale-102 font-bold"
-                        : "bg-white border-outline-variant/15 hover:border-outline-variant/40 text-on-surface-variant"
-                    }`}
-                  >
-                    {time}
-                  </button>
-                );
-              })}
-            </div>
+            {loadingDisp ? (
+              <p className="text-xs text-outline italic pl-1">Consultando disponibilidad real…</p>
+            ) : visibleSlots.length === 0 ? (
+              <p className="text-xs text-warm-terracotta pl-1">
+                {workerMode === "especifico" && !selectedWorkerId
+                  ? "Selecciona un profesional para ver sus horas."
+                  : "No hay horas disponibles para esta fecha."}
+              </p>
+            ) : (
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2.5">
+                {visibleSlots.map((time) => {
+                  const isSelected = selectedTime === time;
+                  const freeWorkers = workerMode === "cualquiera" ? (slotMap.get(time) || []) : [];
+                  return (
+                    <button
+                      key={time}
+                      onClick={() => setSelectedTime(time)}
+                      className={`py-2 px-1 rounded-xl border text-center font-mono text-xs font-semibold transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-secondary text-white border-secondary transform scale-102 font-bold"
+                          : "bg-white border-outline-variant/15 hover:border-outline-variant/40 text-on-surface-variant"
+                      }`}
+                    >
+                      {time}
+                      {workerMode === "cualquiera" && freeWorkers.length > 0 && (
+                        <span className="block text-[8px] font-sans font-bold opacity-75 mt-0.5">
+                          {freeWorkers.map((w) => w.nombre.split(" ")[0]).join(" · ")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between items-center pt-4 border-t border-outline-variant/10">

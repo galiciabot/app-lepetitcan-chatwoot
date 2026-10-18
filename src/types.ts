@@ -38,6 +38,7 @@ export interface OdooService {
   precioPorTamano: string;
   bufferMinutos: number;
   activo: boolean;
+  trabajadorIds?: string[];
 }
 
 export type PrecioTipo = "fijo" | "estimado" | "rango" | "hora";
@@ -65,6 +66,7 @@ export interface Trabajador {
   nombre: string;
   horarioLaboral?: string;
   activo: boolean;
+  servicioIds?: string[];
 }
 
 export type HorarioBloque = [string, string];
@@ -94,6 +96,8 @@ export interface TrabajadorDisponibilidad {
   id: string | number;
   nombre: string;
   huecos: Hueco[];
+  slotsInicio?: string[];
+  ocupadoMin?: number;
 }
 
 export interface Disponibilidad {

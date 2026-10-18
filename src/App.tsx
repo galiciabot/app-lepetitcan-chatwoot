@@ -12,7 +12,7 @@ import { NewAppointmentView } from "./components/NewAppointmentView";
 import { ActiveAppointmentView } from "./components/ActiveAppointmentView";
 import { BreakConfigView } from "./components/BreakConfigView";
 
-import { BookingWidget } from "./components/BookingWidget";
+import { ManualBookingView } from "./components/ManualBookingView";
 import { AdminManagementView } from "./components/AdminManagementView";
 
 // Auth & SaaS Lock gate components
@@ -1711,6 +1711,40 @@ export default function App() {
     setTrabajadores((prev) => prev.map((t) => (t.id === trabajadorId ? { ...t, horarioLaboral } : t)));
   };
 
+  const refreshTrabajadores = async () => {
+    try {
+      const workers = await odooService.getTrabajadores();
+      setTrabajadores(workers);
+    } catch (err) {
+      console.warn("[Odoo] refresh trabajadores failed:", err);
+    }
+  };
+
+  const handleCreateTrabajador = async (name: string, servicioIds: string[]) => {
+    await odooService.createTrabajador({
+      name,
+      horario_laboral: configuracion?.horarioGlobal || "",
+      servicio_ids: servicioIds.filter((s) => /^\d+$/.test(s)).map((s) => Number(s)),
+    });
+    await refreshTrabajadores();
+  };
+
+  const handleUpdateTrabajadorServicios = async (trabajadorId: string, servicioIds: string[]) => {
+    await odooService.updateTrabajador(trabajadorId, {
+      servicio_ids: servicioIds.filter((s) => /^\d+$/.test(s)).map((s) => Number(s)),
+    });
+    await refreshTrabajadores();
+  };
+
+  const handleToggleTrabajadorActivo = async (trabajadorId: string, activo: boolean) => {
+    if (activo) {
+      await odooService.updateTrabajador(trabajadorId, { active: true });
+    } else {
+      await odooService.deleteTrabajador(trabajadorId);
+    }
+    await refreshTrabajadores();
+  };
+
   const refreshServicios = async () => {
     try {
       const svcs = await odooService.getServices();
@@ -1912,7 +1946,7 @@ export default function App() {
     }
   };
 
-  const handleBookingCreated = async (appointment: Appointment) => {
+  const handleBookingCreated = async (appointment: Appointment): Promise<{ id: string; trabajadorId?: number } | null> => {
     setAppointments((prev) => {
       const updated = [...prev, appointment];
       localStorage.setItem("le_petit_can_appointments", JSON.stringify(updated));
@@ -1936,20 +1970,26 @@ export default function App() {
       const mascotaIdNum = /^\d+$/.test(appointment.petId || "") ? Number(appointment.petId) : undefined;
       const partnerIdNum = /^\d+$/.test(appointment.ownerId || "") ? Number(appointment.ownerId) : undefined;
 
-      await odooService.createAppointment({
+      const res = await odooService.createAppointment({
         name: appointment.dogName || appointment.service,
         start,
         stop: end,
         duration: Math.round((duracionTotalMin / 60) * 100) / 100,
         partner_id: partnerIdNum,
         lpc_servicio_id: servicioIdNum,
+        lpc_trabajador_id: appointment.trabajadorId && /^\d+$/.test(appointment.trabajadorId) ? Number(appointment.trabajadorId) : false,
         lpc_mascota_id: mascotaIdNum,
         lpc_estado: odooService.estadoLabelToKey(appointment.status),
         lpc_duracion_total_min: duracionTotalMin,
         description: `Cliente: ${appointment.ownerName} | Tel: ${appointment.ownerPhone || ""} | Email: ${appointment.ownerEmail || ""}`,
       });
+      return {
+        id: res?.id != null ? String(res.id) : "",
+        trabajadorId: res?.lpc_trabajador_id ? Number(res.lpc_trabajador_id) : undefined,
+      };
     } catch (err) {
       console.warn("[App] Odoo appointment creation failed (local save ok):", err);
+      return null;
     }
   };
 
@@ -2492,9 +2532,11 @@ export default function App() {
             })()}
 
             {currentView === "new_appointment" && (
-              <BookingWidget
-                services={services}
+              <ManualBookingView
                 owners={owners}
+                services={services}
+                trabajadores={trabajadores}
+                serviceIdByCode={serviceIdByCode}
                 onNavigateBack={() => setView("dashboard")}
                 onAppointmentCreated={handleBookingCreated}
               />
@@ -2514,21 +2556,27 @@ export default function App() {
                   trabajadores={trabajadores}
                   configuracion={configuracion}
                   bloqueos={bloqueos}
+                  servicios={odooServicios.filter((s) => s.activo !== false).map((s) => ({ id: s.id, name: s.name }))}
                   onSaveDefaultHorario={handleSaveDefaultHorario}
                   onSaveWorkerHorario={handleSaveWorkerHorario}
                   onCreateBloqueo={handleCreateBloqueo}
                   onUpdateBloqueo={handleUpdateBloqueo}
                   onDeleteBloqueo={handleDeleteBloqueo}
+                  onCreateTrabajador={handleCreateTrabajador}
+                  onToggleTrabajadorActivo={handleToggleTrabajadorActivo}
+                  onUpdateTrabajadorServicios={handleUpdateTrabajadorServicios}
                 />
               )
             )}
 
             {currentView === "booking_widget" && (
-              <BookingWidget
-                services={services}
+              <ManualBookingView
                 owners={owners}
+                services={services}
+                trabajadores={trabajadores}
+                serviceIdByCode={serviceIdByCode}
                 onNavigateBack={() => setView("dashboard")}
-onAppointmentCreated={handleBookingCreated}
+                onAppointmentCreated={handleBookingCreated}
               />
             )}
 

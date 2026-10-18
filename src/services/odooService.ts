@@ -170,20 +170,37 @@ export async function getTrabajadores(): Promise<Trabajador[]> {
     nombre: w.nombre || "",
     horarioLaboral: w.horarioLaboral,
     activo: w.activo !== false,
+    servicioIds: (w.servicioIds || []).map((x: any) => String(x)),
   }));
+}
+
+export async function createTrabajador(data: {
+  name: string;
+  horario_laboral?: string;
+  servicio_ids?: number[];
+}): Promise<any> {
+  const body: Record<string, any> = { name: data.name, active: true };
+  if (data.horario_laboral) body.horario_laboral = data.horario_laboral;
+  body.servicio_ids = [[6, 0, data.servicio_ids || []]];
+  return post<any>("/create-trabajador", body);
+}
+
+export async function deleteTrabajador(id: number | string): Promise<any> {
+  return post<any>("/delete-trabajador", { id: String(id) });
 }
 
 export async function updateTrabajador(id: number | string, data: {
   name?: string;
   horario_laboral?: string;
   active?: boolean;
+  servicio_ids?: number[];
 }): Promise<any> {
-  return post<any>("/update-trabajador", {
-    id: String(id),
-    name: data.name,
-    horario_laboral: data.horario_laboral,
-    active: data.active,
-  });
+  const body: Record<string, any> = { id: String(id) };
+  if (data.name !== undefined) body.name = data.name;
+  if (data.horario_laboral !== undefined) body.horario_laboral = data.horario_laboral;
+  if (data.active !== undefined) body.active = data.active;
+  if (data.servicio_ids !== undefined) body.servicio_ids = [[6, 0, data.servicio_ids]];
+  return post<any>("/update-trabajador", body);
 }
 
 // ========== CONFIGURACION ==========
@@ -335,6 +352,7 @@ export async function getServices(): Promise<OdooService[]> {
     precioPorTamano: s.precioPorTamano || "",
     bufferMinutos: Number(s.bufferMinutos) || 0,
     activo: s.activo !== false,
+    trabajadorIds: (s.trabajadorIds || []).map((x: any) => String(x)),
   }));
 }
 
@@ -392,7 +410,7 @@ export async function createAppointment(data: {
   duration?: number;
   partner_id?: number;
   lpc_servicio_id?: number;
-  lpc_trabajador_id?: number;
+  lpc_trabajador_id?: number | false;
   lpc_mascota_id?: number;
   lpc_estado?: string;
   lpc_duracion_total_min?: number;

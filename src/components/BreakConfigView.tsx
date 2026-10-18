@@ -18,11 +18,15 @@ interface BreakConfigViewProps {
   trabajadores: Trabajador[];
   configuracion: Configuracion | null;
   bloqueos: Bloqueo[];
+  servicios: { id: string; name: string }[];
   onSaveDefaultHorario: (horario: string) => Promise<void>;
   onSaveWorkerHorario: (trabajadorId: string, horarioLaboral: string) => Promise<void>;
   onCreateBloqueo: (b: BloqueoInput) => Promise<void>;
   onUpdateBloqueo: (id: string, b: BloqueoInput) => Promise<void>;
   onDeleteBloqueo: (id: string) => Promise<void>;
+  onCreateTrabajador: (name: string, servicioIds: string[]) => Promise<void>;
+  onToggleTrabajadorActivo: (trabajadorId: string, activo: boolean) => Promise<void>;
+  onUpdateTrabajadorServicios: (trabajadorId: string, servicioIds: string[]) => Promise<void>;
 }
 
 export interface BloqueoInput {
@@ -134,13 +138,17 @@ export function BreakConfigView({
   trabajadores,
   configuracion,
   bloqueos,
+  servicios,
   onSaveDefaultHorario,
   onSaveWorkerHorario,
   onCreateBloqueo,
   onUpdateBloqueo,
   onDeleteBloqueo,
+  onCreateTrabajador,
+  onToggleTrabajadorActivo,
+  onUpdateTrabajadorServicios,
 }: BreakConfigViewProps) {
-  const [tab, setTab] = useState<"horario" | "bloqueos">("horario");
+  const [tab, setTab] = useState<"horario" | "bloqueos" | "equipo">("horario");
 
   const defaultParsed = useMemo(() => parseHorario(configuracion?.horarioGlobal || ""), [configuracion?.horarioGlobal]);
   const defaultRaw = useMemo(() => serializeHorario(defaultParsed), [defaultParsed]);
@@ -278,6 +286,61 @@ export function BreakConfigView({
     }
   };
 
+  // Equipo state
+  const [serviceDrafts, setServiceDrafts] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    const map: Record<string, string[]> = {};
+    trabajadores.forEach((t) => {
+      map[t.id] = t.servicioIds ? [...t.servicioIds] : [];
+    });
+    setServiceDrafts(map);
+  }, [trabajadores]);
+
+  const [savingServiciosId, setSavingServiciosId] = useState<string | null>(null);
+  const toggleServicio = (workerId: string, servicioId: string) => {
+    setServiceDrafts((prev) => {
+      const cur = prev[workerId] || [];
+      const next = cur.includes(servicioId) ? cur.filter((s) => s !== servicioId) : [...cur, servicioId];
+      return { ...prev, [workerId]: next };
+    });
+  };
+
+  const saveServicios = async (workerId: string) => {
+    setSavingServiciosId(workerId);
+    try {
+      await onUpdateTrabajadorServicios(workerId, serviceDrafts[workerId] || []);
+      flash("Servicios asignados guardados.");
+    } catch {
+      flash("Error al guardar los servicios.");
+    } finally {
+      setSavingServiciosId(null);
+    }
+  };
+
+  const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [nuevoServicios, setNuevoServicios] = useState<string[]>([]);
+  const [creandoTrabajador, setCreandoTrabajador] = useState(false);
+
+  const toggleNuevoServicio = (id: string) =>
+    setNuevoServicios((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+
+  const crearTrabajador = async () => {
+    if (!nuevoNombre.trim()) return;
+    setCreandoTrabajador(true);
+    try {
+      await onCreateTrabajador(nuevoNombre.trim(), nuevoServicios);
+      setNuevoOpen(false);
+      setNuevoNombre("");
+      setNuevoServicios([]);
+      flash("Trabajador creado correctamente.");
+    } catch {
+      flash("Error al crear el trabajador.");
+    } finally {
+      setCreandoTrabajador(false);
+    }
+  };
+
   return (
     <div className="w-full text-left space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -289,15 +352,19 @@ export function BreakConfigView({
           </p>
         </div>
         <div className="flex p-1 bg-surface-container rounded-full border border-outline-variant/20 bg-[#f9f6f0]">
-          {(["horario", "bloqueos"] as const).map((t) => (
+          {([
+            { key: "horario", label: "Horario" },
+            { key: "bloqueos", label: "Bloqueos" },
+            { key: "equipo", label: "Equipo" },
+          ] as const).map((t) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 px-6 py-2 rounded-full font-sans text-xs font-bold transition-all cursor-pointer ${
-                tab === t ? "bg-white shadow-sm text-primary" : "text-on-surface-variant hover:text-primary"
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex-1 px-5 py-2 rounded-full font-sans text-xs font-bold transition-all cursor-pointer ${
+                tab === t.key ? "bg-white shadow-sm text-primary" : "text-on-surface-variant hover:text-primary"
               }`}
             >
-              {t === "horario" ? "Horario" : "Bloqueos"}
+              {t.label}
             </button>
           ))}
         </div>
@@ -416,6 +483,94 @@ export function BreakConfigView({
         </section>
       )}
 
+      {tab === "equipo" && (
+        <section className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-sans text-xs text-on-surface-variant">
+              Alta y baja de trabajadores y asignación de los servicios que puede realizar cada groomer.
+            </p>
+            <button
+              onClick={() => setNuevoOpen(true)}
+              className="px-5 py-2.5 bg-primary hover:bg-primary/95 text-white font-sans text-xs font-bold rounded-full cursor-pointer flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-base">person_add</span> Nuevo trabajador
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {trabajadores.map((t) => {
+              const activo = t.activo !== false;
+              return (
+                <div key={t.id} className={`bg-white border rounded-3xl p-5 shadow-xs space-y-4 ${activo ? "border-outline-variant/15" : "border-dashed border-outline-variant/30 opacity-80"}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-full bg-secondary/10 text-secondary flex items-center justify-center font-serif font-bold">
+                        {t.nombre.charAt(0).toUpperCase()}
+                      </span>
+                      <div className="text-left">
+                        <h4 className="font-sans text-sm font-extrabold text-primary">{t.nombre}</h4>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${activo ? "text-[#79c35a]" : "text-warm-terracotta"}`}>
+                          {activo ? "Activo" : "Dado de baja"}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => onToggleTrabajadorActivo(t.id, !activo)}
+                      className={`px-4 py-2 text-[11px] font-bold rounded-full cursor-pointer border transition-colors ${
+                        activo
+                          ? "text-warm-terracotta border-warm-terracotta/25 hover:bg-warm-terracotta hover:text-white"
+                          : "text-[#34a853] border-[#34a853]/25 hover:bg-[#34a853] hover:text-white"
+                      }`}
+                    >
+                      {activo ? "Dar de baja" : "Reactivar"}
+                    </button>
+                  </div>
+
+                  {activo && (
+                    <div className="space-y-2 pt-2 border-t border-outline-variant/10">
+                      <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block">
+                        Servicios que realiza
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {servicios.map((s) => {
+                          const selected = (serviceDrafts[t.id] || []).includes(s.id);
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => toggleServicio(t.id, s.id)}
+                              className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all cursor-pointer ${
+                                selected
+                                  ? "bg-primary text-white border-primary"
+                                  : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"
+                              }`}
+                            >
+                              {s.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => saveServicios(t.id)}
+                          disabled={savingServiciosId === t.id}
+                          className="px-4 py-1.5 bg-secondary hover:bg-secondary/90 text-white text-[11px] font-bold rounded-full cursor-pointer disabled:opacity-50"
+                        >
+                          {savingServiciosId === t.id ? "Guardando..." : "Guardar servicios"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {trabajadores.length === 0 && (
+              <p className="text-xs text-outline italic text-center py-8">No hay trabajadores. Crea el primero con "Nuevo trabajador".</p>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Modal horario predeterminado */}
       {defaultModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => setDefaultModalOpen(false)}>
@@ -504,6 +659,63 @@ export function BreakConfigView({
               <div className="flex justify-end gap-3 pt-3">
                 <button onClick={() => { setBloqueoModalOpen(false); setEditingBloqueo(null); }} className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
                 <button onClick={handleSaveBloqueo} disabled={savingBloqueo} className="px-5 py-2 bg-primary text-white font-sans text-xs font-bold rounded-full cursor-pointer">{savingBloqueo ? "Guardando..." : "Guardar"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal nuevo trabajador */}
+      {nuevoOpen && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => setNuevoOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-primary mb-4">Nuevo trabajador</h3>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Nombre</label>
+                <input
+                  value={nuevoNombre}
+                  onChange={(e) => setNuevoNombre(e.target.value)}
+                  placeholder="Ej. Lucía"
+                  className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Servicios que realiza (opcional)</label>
+                <div className="flex flex-wrap gap-2">
+                  {servicios.map((s) => {
+                    const selected = nuevoServicios.includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => toggleNuevoServicio(s.id)}
+                        className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all cursor-pointer ${
+                          selected
+                            ? "bg-primary text-white border-primary"
+                            : "bg-white text-on-surface-variant border-outline-variant/25 hover:border-primary/40"
+                        }`}
+                      >
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <p className="text-[10px] text-outline">Se le aplicará automáticamente el horario predeterminado del salón.</p>
+              <div className="flex justify-end gap-3 pt-3">
+                <button
+                  onClick={() => { setNuevoOpen(false); setNuevoNombre(""); setNuevoServicios([]); }}
+                  className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={crearTrabajador}
+                  disabled={creandoTrabajador || !nuevoNombre.trim()}
+                  className="px-5 py-2 bg-primary text-white font-sans text-xs font-bold rounded-full cursor-pointer disabled:opacity-50"
+                >
+                  {creandoTrabajador ? "Creando..." : "Crear"}
+                </button>
               </div>
             </div>
           </div>
