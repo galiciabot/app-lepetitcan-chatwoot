@@ -1720,6 +1720,19 @@ export default function App() {
     }
   };
 
+  const refreshOwners = async () => {
+    try {
+      const contacts = await odooService.getContacts();
+      if (contacts?.length) {
+        const ownersList = contacts.map(odooService.partnerToOwner);
+        setOwners(ownersList);
+        localStorage.setItem("le_petit_can_owners", JSON.stringify(ownersList));
+      }
+    } catch (err) {
+      console.warn("[Odoo] refresh owners failed:", err);
+    }
+  };
+
   const handleCreateTrabajador = async (name: string, servicioIds: string[]) => {
     await odooService.createTrabajador({
       name,
@@ -2540,6 +2553,7 @@ export default function App() {
                 serviceIdByCode={serviceIdByCode}
                 onNavigateBack={() => setView("dashboard")}
                 onAppointmentCreated={handleBookingCreated}
+                onDataChanged={refreshOwners}
               />
             )}
 
@@ -2578,6 +2592,7 @@ export default function App() {
                 serviceIdByCode={serviceIdByCode}
                 onNavigateBack={() => setView("dashboard")}
                 onAppointmentCreated={handleBookingCreated}
+                onDataChanged={refreshOwners}
               />
             )}
 

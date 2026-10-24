@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { Owner, Service, Trabajador, Appointment, Disponibilidad } from "../types";
-import { getDisponibilidad } from "../services/odooService";
+import React, { useRef, useState } from "react";
+import { Owner, Pet, Service, Trabajador, Appointment, Disponibilidad } from "../types";
+import { getDisponibilidad, createContact, createPet } from "../services/odooService";
 
 const SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"];
 
@@ -11,6 +11,7 @@ interface ManualBookingViewProps {
   serviceIdByCode: Record<string, string>;
   onAppointmentCreated: (a: Appointment) => Promise<{ id: string; trabajadorId?: number } | null>;
   onNavigateBack: () => void;
+  onDataChanged?: () => void;
 }
 
 function getUpcomingDays(): { date: string; label: string; num: string }[] {
@@ -40,14 +41,18 @@ export function ManualBookingView({
   serviceIdByCode,
   onAppointmentCreated,
   onNavigateBack,
+  onDataChanged,
 }: ManualBookingViewProps) {
   const activeServices = services || [];
   const activeTrabajadores = (trabajadores || []).filter((t) => t.activo !== false);
   const upcomingDays = getUpcomingDays();
 
-  const [ownerId, setOwnerId] = useState("");
+  const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null);
+  const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [ownerSearch, setOwnerSearch] = useState("");
-  const [petId, setPetId] = useState("");
+  const [ownerSearchOpen, setOwnerSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   const [serviceId, setServiceId] = useState(activeServices[0]?.id || "");
   const [size, setSize] = useState<string>("Mediano");
   const [date, setDate] = useState<string>(upcomingDays[0]?.date || "");
@@ -60,49 +65,165 @@ export function ManualBookingView({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ dogName: string; fecha: string; hora: string; groomer?: string } | null>(null);
 
+  // Nueva entidad: cliente
+  const [newOwnerOpen, setNewOwnerOpen] = useState(false);
+  const [newOwnerForm, setNewOwnerForm] = useState({ name: "", phone: "", email: "", city: "", zip: "" });
+  const [savingOwner, setSavingOwner] = useState(false);
+  const [ownerFormError, setOwnerFormError] = useState<string | null>(null);
+
+  // Nueva entidad: mascota
+  const [newPetOpen, setNewPetOpen] = useState(false);
+  const [newPetForm, setNewPetForm] = useState({ name: "", breed: "", size: "Mediano", behavior: "", birthDate: "", notes: "" });
+  const [savingPet, setSavingPet] = useState(false);
+  const [petFormError, setPetFormError] = useState<string | null>(null);
+
   const minDate = toIso(new Date());
   const maxDateObj = new Date();
   maxDateObj.setDate(maxDateObj.getDate() + 365);
   const maxDate = toIso(maxDateObj);
 
-  const selectedOwner = owners.find((o) => String(o.id) === String(ownerId));
   const pets = selectedOwner?.pets || [];
-  const selectedPet = pets.find((p) => String(p.id) === String(petId));
   const selectedService = activeServices.find((s) => s.id === serviceId);
-
   const servicioIdNum = selectedService && serviceIdByCode ? Number(serviceIdByCode[selectedService.id]) : undefined;
 
-  const filteredOwners = (
-    ownerId
-      ? []
-      : owners.filter((o) => {
-          if (!o.name || o.name === "My Company") return false;
-          const q = ownerSearch.trim().toLowerCase();
-          if (!q) return true;
-          return o.name.toLowerCase().includes(q) || (o.phone || "").includes(q) || (o.contact || "").toLowerCase().includes(q);
-        })
-  ).slice(0, 50);
+  const filteredOwners = owners
+    .filter((o) => {
+      if (!o.name || o.name === "My Company") return false;
+      const q = ownerSearch.trim().toLowerCase();
+      if (!q) return true;
+      return o.name.toLowerCase().includes(q) || (o.phone || "").includes(q) || (o.contact || "").toLowerCase().includes(q);
+    })
+    .slice(0, 50);
 
-  const handleOwnerChange = (id: string) => {
-    setOwnerId(id);
+  // Cerrar el desplegable de búsqueda al hacer click fuera
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setOwnerSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selectOwner = (o: Owner) => {
+    setSelectedOwner(o);
+    setSelectedPet(null);
     setOwnerSearch("");
-    setPetId("");
+    setOwnerSearchOpen(false);
     setSize("Mediano");
   };
 
-  const handlePetChange = (id: string) => {
-    setPetId(id);
-    const owner = owners.find((o) => String(o.id) === String(ownerId));
-    const p = (owner?.pets || []).find((x) => String(x.id) === String(id));
-    setSize(p && SIZES.includes(p.size) ? p.size : "Mediano");
+  const clearOwner = () => {
+    setSelectedOwner(null);
+    setSelectedPet(null);
+    setOwnerSearch("");
+    setSize("Mediano");
+  };
+
+  const selectPet = (p: Pet) => {
+    setSelectedPet(p);
+    setSize(SIZES.includes(p.size) ? p.size : "Mediano");
   };
 
   const handleFresh = () => {
     setSuccess(null);
     setError(null);
     setTime("");
-    setPetId("");
-    setOwnerId("");
+    setSelectedOwner(null);
+    setSelectedPet(null);
+    setOwnerSearch("");
+    setSize("Mediano");
+  };
+
+  const submitNewOwner = async () => {
+    setOwnerFormError(null);
+    if (!newOwnerForm.name.trim() || !newOwnerForm.phone.trim()) {
+      setOwnerFormError("Nombre y teléfono son obligatorios.");
+      return;
+    }
+    setSavingOwner(true);
+    try {
+      const res = await createContact({
+        name: newOwnerForm.name.trim(),
+        phone: newOwnerForm.phone.trim(),
+        email: newOwnerForm.email.trim(),
+        city: newOwnerForm.city.trim(),
+        zip: newOwnerForm.zip.trim(),
+        image: "",
+      });
+      const id = res?.id;
+      if (!id) throw new Error("Sin id");
+      const owner: Owner = {
+        id: String(id),
+        name: newOwnerForm.name.trim(),
+        contact: newOwnerForm.email.trim(),
+        phone: newOwnerForm.phone.trim(),
+        city: newOwnerForm.city.trim() || undefined,
+        zipCode: newOwnerForm.zip.trim() || undefined,
+        since: "",
+        avatar: "",
+        pets: [],
+      };
+      setSelectedOwner(owner);
+      setSelectedPet(null);
+      setOwnerSearchOpen(false);
+      setNewOwnerOpen(false);
+      setNewOwnerForm({ name: "", phone: "", email: "", city: "", zip: "" });
+      onDataChanged?.();
+    } catch {
+      setOwnerFormError("Error al crear el cliente.");
+    } finally {
+      setSavingOwner(false);
+    }
+  };
+
+  const submitNewPet = async () => {
+    setPetFormError(null);
+    if (!selectedOwner || !newPetForm.name.trim()) {
+      setPetFormError("El nombre de la mascota es obligatorio.");
+      return;
+    }
+    setSavingPet(true);
+    try {
+      const res = await createPet({
+        name: newPetForm.name.trim(),
+        parent_id: Number(selectedOwner.id),
+        breed: newPetForm.breed.trim(),
+        size: newPetForm.size,
+        behavior: newPetForm.behavior.trim(),
+        birthDate: newPetForm.birthDate,
+        notes: newPetForm.notes.trim(),
+        image: "",
+      });
+      const id = res?.id;
+      if (!id) throw new Error("Sin id");
+      const pet: Pet = {
+        id: String(id),
+        name: newPetForm.name.trim(),
+        breed: newPetForm.breed.trim(),
+        size: newPetForm.size as any,
+        behavior: newPetForm.behavior.trim(),
+        birthDate: newPetForm.birthDate,
+        notes: newPetForm.notes.trim(),
+        avatarUrl: "",
+        avgDuration: "",
+        status: "ACTIVO",
+        lastVisitDate: "",
+        lastVisitService: "",
+        history: [],
+      };
+      setSelectedOwner((prev) => (prev ? { ...prev, pets: [...prev.pets, pet] } : prev));
+      setSelectedPet(pet);
+      setSize(SIZES.includes(pet.size) ? pet.size : "Mediano");
+      setNewPetOpen(false);
+      setNewPetForm({ name: "", breed: "", size: "Mediano", behavior: "", birthDate: "", notes: "" });
+      onDataChanged?.();
+    } catch {
+      setPetFormError("Error al crear la mascota.");
+    } finally {
+      setSavingPet(false);
+    }
   };
 
   React.useEffect(() => {
@@ -187,7 +308,7 @@ export function ManualBookingView({
           <span className="font-sans text-[11px] font-black text-secondary uppercase tracking-widest">Agenda Interna</span>
           <h2 className="font-serif text-3xl md:text-5xl text-primary font-bold mt-1">Reservar Cita</h2>
           <p className="font-sans text-xs text-on-surface-variant mt-1.5 font-medium">
-            Agenda manualmente una cita para un cliente existente, con disponibilidad real del equipo.
+            Agenda manualmente una cita, con disponibilidad real del equipo. Puedes dar de alta cliente y mascota al vuelo.
           </p>
         </div>
         {onNavigateBack && (
@@ -223,13 +344,22 @@ export function ManualBookingView({
         {/* Cliente + Mascota */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block pl-1">Cliente</label>
+            <div className="flex items-center justify-between pl-1">
+              <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block">Cliente</label>
+              <button
+                type="button"
+                onClick={() => setNewOwnerOpen(true)}
+                className="text-[11px] font-bold text-primary hover:text-secondary cursor-pointer flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-sm">person_add</span> Nuevo cliente
+              </button>
+            </div>
             {selectedOwner ? (
               <div className="flex items-center justify-between gap-2 px-4 py-2.5 border border-primary/20 bg-primary/5 rounded-full text-xs text-on-surface">
                 <span className="truncate font-semibold">{selectedOwner.name}{selectedOwner.phone ? ` · ${selectedOwner.phone}` : ""}</span>
                 <button
                   type="button"
-                  onClick={() => handleOwnerChange("")}
+                  onClick={clearOwner}
                   className="text-warm-terracotta hover:bg-warm-terracotta/10 rounded-full p-1 cursor-pointer"
                   title="Quitar cliente"
                 >
@@ -237,49 +367,73 @@ export function ManualBookingView({
                 </button>
               </div>
             ) : (
-              <div className="relative">
+              <div className="relative" ref={searchRef}>
                 <div className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-full text-xs bg-white focus-within:border-primary">
                   <span className="material-symbols-outlined text-sm text-outline">search</span>
                   <input
                     value={ownerSearch}
-                    onChange={(e) => setOwnerSearch(e.target.value)}
+                    onChange={(e) => { setOwnerSearch(e.target.value); setOwnerSearchOpen(true); }}
+                    onFocus={() => setOwnerSearchOpen(true)}
+                    onClick={() => setOwnerSearchOpen(true)}
                     placeholder="Buscar por nombre o teléfono…"
                     className="w-full bg-transparent text-on-surface focus:outline-none"
                   />
                 </div>
-                <div className="absolute z-20 mt-1 w-full bg-white border border-outline-variant/20 rounded-2xl shadow-lg max-h-56 overflow-y-auto">
-                  {filteredOwners.length === 0 ? (
-                    <p className="text-[11px] text-outline italic px-4 py-3">Sin coincidencias.</p>
-                  ) : (
-                    filteredOwners.map((o) => (
-                      <button
-                        key={o.id}
-                        type="button"
-                        onClick={() => handleOwnerChange(String(o.id))}
-                        className="w-full text-left px-4 py-2 hover:bg-ivory-base/60 text-xs text-on-surface border-b border-outline-variant/10 last:border-0"
-                      >
-                        <span className="font-semibold">{o.name}</span>
-                        {o.phone ? <span className="text-outline"> · {o.phone}</span> : null}
-                      </button>
-                    ))
-                  )}
-                </div>
+                {ownerSearchOpen && (
+                  <div className="absolute z-20 mt-1 w-full bg-white border border-outline-variant/20 rounded-2xl shadow-lg max-h-56 overflow-y-auto">
+                    {filteredOwners.length === 0 ? (
+                      <p className="text-[11px] text-outline italic px-4 py-3">Sin coincidencias. Usa "Nuevo cliente".</p>
+                    ) : (
+                      filteredOwners.map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectOwner(o)}
+                          className="w-full text-left px-4 py-2 hover:bg-ivory-base/60 text-xs text-on-surface border-b border-outline-variant/10 last:border-0"
+                        >
+                          <span className="font-semibold">{o.name}</span>
+                          {o.phone ? <span className="text-outline"> · {o.phone}</span> : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
+
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block pl-1">Mascota</label>
-            <select
-              value={petId}
-              onChange={(e) => handlePetChange(e.target.value)}
-              disabled={!selectedOwner}
-              className="w-full px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary disabled:opacity-50"
-            >
-              <option value="">{selectedOwner ? "— Selecciona mascota —" : "Primero elige cliente"}</option>
-              {pets.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} · {p.breed} · {p.size}</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between pl-1">
+              <label className="text-[11px] font-bold text-on-surface uppercase tracking-wider block">Mascota</label>
+              {selectedOwner && (
+                <button
+                  type="button"
+                  onClick={() => setNewPetOpen(true)}
+                  className="text-[11px] font-bold text-primary hover:text-secondary cursor-pointer flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">pets</span> Nueva mascota
+                </button>
+              )}
+            </div>
+            {selectedOwner ? (
+              <select
+                value={selectedPet ? String(selectedPet.id) : ""}
+                onChange={(e) => {
+                  const p = pets.find((x) => String(x.id) === e.target.value);
+                  if (p) selectPet(p);
+                  else setSelectedPet(null);
+                }}
+                className="w-full px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+              >
+                <option value="">— Selecciona mascota —</option>
+                {pets.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} · {p.breed} · {p.size}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-outline italic px-4 py-2.5">Primero elige o crea el cliente.</p>
+            )}
           </div>
         </div>
 
@@ -438,6 +592,88 @@ export function ManualBookingView({
           </button>
         </div>
       </div>
+
+      {/* Modal nuevo cliente */}
+      {newOwnerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => setNewOwnerOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-primary mb-4">Nuevo cliente</h3>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Nombre *</label>
+                <input value={newOwnerForm.name} onChange={(e) => setNewOwnerForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nombre y apellidos" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Teléfono *</label>
+                <input value={newOwnerForm.phone} onChange={(e) => setNewOwnerForm((f) => ({ ...f, phone: e.target.value }))} placeholder="Ej. +34 612901234" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Email</label>
+                <input value={newOwnerForm.email} onChange={(e) => setNewOwnerForm((f) => ({ ...f, email: e.target.value }))} placeholder="cliente@dominio.com" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-on-surface pl-1 block">Ciudad</label>
+                  <input value={newOwnerForm.city} onChange={(e) => setNewOwnerForm((f) => ({ ...f, city: e.target.value }))} className="w-full px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-on-surface pl-1 block">Código Postal</label>
+                  <input value={newOwnerForm.zip} onChange={(e) => setNewOwnerForm((f) => ({ ...f, zip: e.target.value }))} className="w-full px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+                </div>
+              </div>
+              {ownerFormError && <p className="text-xs font-semibold text-warm-terracotta">{ownerFormError}</p>}
+              <div className="flex justify-end gap-3 pt-3">
+                <button type="button" onClick={() => { setNewOwnerOpen(false); setOwnerFormError(null); }} className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
+                <button type="button" onClick={submitNewOwner} disabled={savingOwner} className="px-5 py-2 bg-primary text-white font-sans text-xs font-bold rounded-full cursor-pointer disabled:opacity-50">{savingOwner ? "Guardando…" : "Guardar y continuar"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal nueva mascota */}
+      {newPetOpen && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={() => setNewPetOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-serif text-lg font-bold text-primary mb-4">Nueva mascota</h3>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Nombre *</label>
+                <input value={newPetForm.name} onChange={(e) => setNewPetForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ej. Max" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-on-surface pl-1 block">Raza</label>
+                  <input value={newPetForm.breed} onChange={(e) => setNewPetForm((f) => ({ ...f, breed: e.target.value }))} placeholder="Ej. Golden" className="w-full px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-on-surface pl-1 block">Tamaño</label>
+                  <select value={newPetForm.size} onChange={(e) => setNewPetForm((f) => ({ ...f, size: e.target.value }))} className="w-full px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary">
+                    {SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Comportamiento</label>
+                <input value={newPetForm.behavior} onChange={(e) => setNewPetForm((f) => ({ ...f, behavior: e.target.value }))} placeholder="Tranquilo, nervioso…" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Fecha de nacimiento</label>
+                <input type="date" value={newPetForm.birthDate} onChange={(e) => setNewPetForm((f) => ({ ...f, birthDate: e.target.value }))} className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-on-surface pl-1 block">Notas</label>
+                <input value={newPetForm.notes} onChange={(e) => setNewPetForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Alergias, cuidados…" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              {petFormError && <p className="text-xs font-semibold text-warm-terracotta">{petFormError}</p>}
+              <div className="flex justify-end gap-3 pt-3">
+                <button type="button" onClick={() => { setNewPetOpen(false); setPetFormError(null); }} className="px-5 py-2 bg-white border border-outline-variant/30 text-primary font-sans text-xs font-bold rounded-full cursor-pointer">Cancelar</button>
+                <button type="button" onClick={submitNewPet} disabled={savingPet} className="px-5 py-2 bg-primary text-white font-sans text-xs font-bold rounded-full cursor-pointer disabled:opacity-50">{savingPet ? "Guardando…" : "Guardar y seleccionar"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
