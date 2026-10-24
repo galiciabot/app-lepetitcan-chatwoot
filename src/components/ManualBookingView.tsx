@@ -356,7 +356,7 @@ export function ManualBookingView({
             </div>
             {selectedOwner ? (
               <div className="flex items-center justify-between gap-2 px-4 py-2.5 border border-primary/20 bg-primary/5 rounded-full text-xs text-on-surface">
-                <span className="truncate font-semibold">{selectedOwner.name}{selectedOwner.phone ? ` · ${selectedOwner.phone}` : ""}</span>
+                <span className="truncate font-semibold">{selectedOwner.name}</span>
                 <button
                   type="button"
                   onClick={clearOwner}
@@ -417,20 +417,33 @@ export function ManualBookingView({
               )}
             </div>
             {selectedOwner ? (
-              <select
-                value={selectedPet ? String(selectedPet.id) : ""}
-                onChange={(e) => {
-                  const p = pets.find((x) => String(x.id) === e.target.value);
-                  if (p) selectPet(p);
-                  else setSelectedPet(null);
-                }}
-                className="w-full px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
-              >
-                <option value="">— Selecciona mascota —</option>
-                {pets.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} · {p.breed} · {p.size}</option>
-                ))}
-              </select>
+              selectedPet ? (
+                <div className="flex items-center justify-between gap-2 px-4 py-2.5 border border-primary/20 bg-primary/5 rounded-full text-xs text-on-surface">
+                  <span className="truncate font-semibold">{selectedPet.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPet(null)}
+                    className="text-warm-terracotta hover:bg-warm-terracotta/10 rounded-full p-1 cursor-pointer"
+                    title="Quitar mascota"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const p = pets.find((x) => String(x.id) === e.target.value);
+                    if (p) selectPet(p);
+                  }}
+                  className="w-full px-4 py-2.5 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+                >
+                  <option value="">— Selecciona mascota —</option>
+                  {pets.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} · {p.breed} · {p.size}</option>
+                  ))}
+                </select>
+              )
             ) : (
               <p className="text-xs text-outline italic px-4 py-2.5">Primero elige o crea el cliente.</p>
             )}
