@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ClientProfile, Owner, Pet, Appointment, VisitHistory } from "../types";
+import { SPANISH_DOG_BREEDS, BEHAVIOR_PRESETS } from "../constants/petOptions";
 
 const PRESET_OWNER_AVATARS = [
   "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
@@ -14,33 +15,6 @@ const PRESET_PET_AVATARS = [
   "https://images.unsplash.com/photo-1517849845537-4d257902454a?w=150&auto=format&fit=crop&q=80",
   "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=150&auto=format&fit=crop&q=80",
   "https://images.unsplash.com/photo-1534361960057-19889db9621e?w=150&auto=format&fit=crop&q=80"
-];
-
-const SPANISH_DOG_BREEDS = [
-  "Mestizo",
-  "Bichón Maltés",
-  "Bulldog Francés",
-  "Caniche (Poodle)",
-  "Chihuahua",
-  "Cocker Spaniel",
-  "Golden Retriever",
-  "Labrador Retriever",
-  "Pastor Alemán",
-  "Yorkshire Terrier",
-  "Pomerania",
-  "Schnauzer",
-  "Shih Tzu",
-  "Teckel (Dachshund)",
-  "Otro"
-];
-
-const BEHAVIOR_PRESETS = [
-  "Manso / Cariñoso",
-  "Tranquilo / Sociable",
-  "Inquieto / Nervioso",
-  "Miedoso / Asustadizo",
-  "Agresivo / Reactivo",
-  "Juguetón / Hiperactivo"
 ];
 
 async function resizeImageToDataUrl(file: File, maxDim = 512, quality = 0.85): Promise<string> {
@@ -1824,6 +1798,7 @@ export function ClientDetailView({
                         {breed}
                       </option>
                     ))}
+                    <option value="Otro">Otro</option>
                   </select>
                 </div>
               </div>

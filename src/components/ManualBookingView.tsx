@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Owner, Pet, Service, Trabajador, Appointment, Disponibilidad } from "../types";
 import { getDisponibilidad, createContact, createPet } from "../services/odooService";
+import { SPANISH_DOG_BREEDS, BEHAVIOR_PRESETS } from "../constants/petOptions";
 
 const SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"];
 
@@ -73,7 +74,7 @@ export function ManualBookingView({
 
   // Nueva entidad: mascota
   const [newPetOpen, setNewPetOpen] = useState(false);
-  const [newPetForm, setNewPetForm] = useState({ name: "", breed: "", size: "Mediano", behavior: "", birthDate: "", notes: "" });
+  const [newPetForm, setNewPetForm] = useState({ name: "", breed: "", customBreed: "", size: "Mediano", behavior: "", customBehavior: "", birthDate: "", notes: "" });
   const [savingPet, setSavingPet] = useState(false);
   const [petFormError, setPetFormError] = useState<string | null>(null);
 
@@ -186,12 +187,14 @@ export function ManualBookingView({
     }
     setSavingPet(true);
     try {
+      const breed = newPetForm.breed === "Otro" ? newPetForm.customBreed.trim() : newPetForm.breed.trim();
+      const behavior = newPetForm.behavior === "Otro" ? newPetForm.customBehavior.trim() : newPetForm.behavior.trim();
       const res = await createPet({
         name: newPetForm.name.trim(),
         parent_id: Number(selectedOwner.id),
-        breed: newPetForm.breed.trim(),
+        breed,
         size: newPetForm.size,
-        behavior: newPetForm.behavior.trim(),
+        behavior,
         birthDate: newPetForm.birthDate,
         notes: newPetForm.notes.trim(),
         image: "",
@@ -201,9 +204,9 @@ export function ManualBookingView({
       const pet: Pet = {
         id: String(id),
         name: newPetForm.name.trim(),
-        breed: newPetForm.breed.trim(),
+        breed,
         size: newPetForm.size as any,
-        behavior: newPetForm.behavior.trim(),
+        behavior,
         birthDate: newPetForm.birthDate,
         notes: newPetForm.notes.trim(),
         avatarUrl: "",
@@ -217,7 +220,7 @@ export function ManualBookingView({
       setSelectedPet(pet);
       setSize(SIZES.includes(pet.size) ? pet.size : "Mediano");
       setNewPetOpen(false);
-      setNewPetForm({ name: "", breed: "", size: "Mediano", behavior: "", birthDate: "", notes: "" });
+      setNewPetForm({ name: "", breed: "", customBreed: "", size: "Mediano", behavior: "", customBehavior: "", birthDate: "", notes: "" });
       onDataChanged?.();
     } catch {
       setPetFormError("Error al crear la mascota.");
@@ -657,7 +660,25 @@ export function ManualBookingView({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-on-surface pl-1 block">Raza</label>
-                  <input value={newPetForm.breed} onChange={(e) => setNewPetForm((f) => ({ ...f, breed: e.target.value }))} placeholder="Ej. Golden" className="w-full px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+                  <select
+                    value={newPetForm.breed}
+                    onChange={(e) => setNewPetForm((f) => ({ ...f, breed: e.target.value }))}
+                    className="w-full px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+                  >
+                    <option value="">— Selecciona raza —</option>
+                    {SPANISH_DOG_BREEDS.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                    <option value="Otro">Otro</option>
+                  </select>
+                  {newPetForm.breed === "Otro" && (
+                    <input
+                      value={newPetForm.customBreed}
+                      onChange={(e) => setNewPetForm((f) => ({ ...f, customBreed: e.target.value }))}
+                      placeholder="Escribe la raza…"
+                      className="w-full mt-1.5 px-3 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-on-surface pl-1 block">Tamaño</label>
@@ -668,7 +689,25 @@ export function ManualBookingView({
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-on-surface pl-1 block">Comportamiento</label>
-                <input value={newPetForm.behavior} onChange={(e) => setNewPetForm((f) => ({ ...f, behavior: e.target.value }))} placeholder="Tranquilo, nervioso…" className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary" />
+                <select
+                  value={newPetForm.behavior}
+                  onChange={(e) => setNewPetForm((f) => ({ ...f, behavior: e.target.value }))}
+                  className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary"
+                >
+                  <option value="">— Selecciona comportamiento —</option>
+                  {BEHAVIOR_PRESETS.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                  <option value="Otro">Otro</option>
+                </select>
+                {newPetForm.behavior === "Otro" && (
+                  <input
+                    value={newPetForm.customBehavior}
+                    onChange={(e) => setNewPetForm((f) => ({ ...f, customBehavior: e.target.value }))}
+                    placeholder="Describe el comportamiento…"
+                    className="w-full mt-1.5 px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                )}
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-on-surface pl-1 block">Fecha de nacimiento</label>

@@ -2,35 +2,7 @@ import React, { useState } from "react";
 import { Appointment, Service, Owner, Disponibilidad, Trabajador } from "../types";
 import { lookupZoneByZip } from "./ClientDetailView";
 import { getDisponibilidad } from "../services/odooService";
-
-export const SPANISH_DOG_BREEDS = [
-  "Otro",
-  "Mestizo",
-  "Bichón Maltés",
-  "Bulldog Francés",
-  "Caniche (Poodle)",
-  "Chihuahua",
-  "Cocker Spaniel",
-  "Golden Retriever",
-  "Labrador Retriever",
-  "Pastor Alemán",
-  "Yorkshire Terrier",
-  "Beagle",
-  "Bodeguero Andaluz",
-  "Bóxer",
-  "Bulldog Inglés",
-  "Carlino (Pug)",
-  "Galgo Español",
-  "Husky Siberiano",
-  "Mastín Español",
-  "Perro de Agua Español",
-  "Pomerania",
-  "Rottweiler",
-  "San Bernardo",
-  "Schnauzer",
-  "Shih Tzu",
-  "Teckel (Dachshund)"
-];
+import { SPANISH_DOG_BREEDS } from "../constants/petOptions";
 
 interface BookingWidgetProps {
   onAppointmentCreated?: (appointment: Appointment) => void;
@@ -872,6 +844,7 @@ value={ownerZipCode}
                     onChange={(e) => setBreed(e.target.value)}
                     className="w-full px-4 py-2 border border-outline-variant rounded-full text-xs text-on-surface bg-white focus:outline-none focus:border-primary focus:bg-background"
                   >
+                    <option value="Otro">Otro</option>
                     {SPANISH_DOG_BREEDS.map((b) => (
                       <option key={b} value={b}>
                         {b}
