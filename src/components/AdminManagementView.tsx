@@ -71,6 +71,7 @@ interface AdminManagementViewProps {
   owners: Owner[];
   onSaveOwner: (owner: Owner) => Promise<void>;
   onDeleteOwner: (id: string) => Promise<void>;
+  onDeletePet?: (ownerId: string, petId: string) => void | Promise<void>;
   odooServicios: OdooService[];
   onCreateServicio: (payload: ServicioPayload) => Promise<void>;
   onUpdateServicio: (id: string, payload: ServicioPayload) => Promise<void>;
@@ -86,6 +87,7 @@ export function AdminManagementView({
   owners,
   onSaveOwner,
   onDeleteOwner,
+  onDeletePet,
   odooServicios,
   onCreateServicio,
   onUpdateServicio,
@@ -355,11 +357,15 @@ export function AdminManagementView({
   };
 
   const handleDeletePetClick = async (ownerId: string, petId: string) => {
-    if (!window.confirm("¿Seguro que quieres borrar este registro de mascota?")) return;
-    const owner = owners.find((o) => o.id === ownerId);
-    if (!owner) return;
-    const updatedPets = owner.pets.filter((p) => p.id !== petId);
-    await onSaveOwner({ ...owner, pets: updatedPets });
+    if (!window.confirm("¿Seguro que quieres desactivar este registro de mascota?")) return;
+    if (onDeletePet) {
+      await onDeletePet(ownerId, petId);
+    } else {
+      const owner = owners.find((o) => o.id === ownerId);
+      if (!owner) return;
+      const updatedPets = owner.pets.filter((p) => p.id !== petId);
+      await onSaveOwner({ ...owner, pets: updatedPets });
+    }
   };
 
   const handleQuickStockAdjust = async (product: Product, delta: number) => {

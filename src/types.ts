@@ -206,6 +206,7 @@ export interface Pet {
   lastVisitService: string;
   notes?: string;
   history: VisitHistory[];
+  archivado?: boolean;
 }
 
 export interface Owner {
@@ -225,6 +226,7 @@ export interface Owner {
   avatar: string;
   pets: Pet[];
   channels?: MetaChannelConfig;
+  archivado?: boolean;
 }
 
 export interface ServicePricing {

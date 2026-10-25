@@ -1897,6 +1897,7 @@ export default function App() {
   };
 
   const handleDeleteOwner = async (id: string) => {
+    const owner = owners.find((item) => item.id === id);
     setOwners((prev) => {
       const copy = prev.filter((item) => item.id !== id);
       localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
@@ -1904,8 +1905,62 @@ export default function App() {
     });
     try {
       await odooService.deleteContact(id);
+      for (const pet of owner?.pets || []) {
+        if (/^\d+$/.test(pet.id)) {
+          try {
+            await odooService.deletePet(pet.id);
+          } catch (err) {
+            console.warn("[App] Odoo pet archive failed:", pet.id, err);
+          }
+        }
+      }
     } catch (err) {
       console.warn("[App] Odoo delete failed (local delete ok):", err);
+    }
+  };
+
+  const handleReactivateOwner = async (id: string) => {
+    const owner = owners.find((item) => item.id === id);
+    if (!owner) return;
+    setOwners((prev) => {
+      const copy = prev.map((o) =>
+        o.id === id
+          ? { ...o, archivado: false, pets: (o.pets || []).map((p) => ({ ...p, archivado: false })) }
+          : o
+      );
+      localStorage.setItem("le_petit_can_owners", JSON.stringify(copy));
+      return copy;
+    });
+    if (!/^\d+$/.test(id)) return;
+    try {
+      await odooService.updateContact(id, {
+        name: owner.name,
+        email: owner.contact || "",
+        phone: owner.phone || "",
+        mobile: owner.phone2 || "",
+        city: owner.city || "",
+        zip: owner.zipCode || "",
+        image: odooService.dataUrlToBase64(owner.avatar),
+      });
+      for (const pet of owner.pets || []) {
+        if (/^\d+$/.test(pet.id)) {
+          try {
+            await odooService.updatePet(pet.id, {
+              name: pet.name,
+              breed: pet.breed || "",
+              size: pet.size,
+              behavior: pet.behavior,
+              birthDate: pet.birthDate,
+              notes: pet.notes || "",
+              image: odooService.dataUrlToBase64(pet.avatarUrl),
+            });
+          } catch (err) {
+            console.warn("[App] Odoo pet reactivate failed:", pet.id, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[App] Odoo reactivate failed (local ok):", err);
     }
   };
 
@@ -2495,6 +2550,7 @@ export default function App() {
                 onDeleteOwner={handleDeleteOwner}
                 onSavePet={handleSavePet}
                 onDeletePet={handleDeletePet}
+                onReactivateOwner={handleReactivateOwner}
                 onBack={() => setView("dashboard")}
                 appointments={appointments}
                 initialOwnerId={selectedOwnerIdForDetail}
@@ -2611,6 +2667,7 @@ export default function App() {
                   owners={owners}
                   onSaveOwner={handleSaveOwner}
                   onDeleteOwner={handleDeleteOwner}
+                  onDeletePet={handleDeletePet}
                   odooServicios={odooServicios}
                   onCreateServicio={handleCreateServicio}
                   onUpdateServicio={handleUpdateServicio}

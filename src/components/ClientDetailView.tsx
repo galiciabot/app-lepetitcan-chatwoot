@@ -249,6 +249,7 @@ interface ClientDetailViewProps {
   onDeleteOwner?: (id: string) => void | Promise<void>;
   onSavePet?: (pet: Pet, ownerId: string) => void | Promise<void>;
   onDeletePet?: (ownerId: string, petId: string) => void | Promise<void>;
+  onReactivateOwner?: (id: string) => void | Promise<void>;
   appointments?: Appointment[];
   initialOwnerId?: string;
   initialPetId?: string;
@@ -262,6 +263,7 @@ export function ClientDetailView({
   onDeleteOwner,
   onSavePet,
   onDeletePet,
+  onReactivateOwner,
   appointments,
   initialOwnerId,
   initialPetId,
@@ -330,6 +332,7 @@ export function ClientDetailView({
 
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [reportOpen, setReportOpen] = useState<boolean>(false);
+  const [showInactive, setShowInactive] = useState<boolean>(false);
 
   // Modals view controllers
   const [ownerModalOpen, setOwnerModalOpen] = useState(false);
@@ -588,6 +591,7 @@ export function ClientDetailView({
   };
 
   const filteredOwners = ACTUAL_OWNERS.filter((owner) => {
+    if (!showInactive && owner.archivado) return false;
     if (!searchQuery) return true;
     if (matchesQuery(owner.name, searchQuery)) return true;
     if (matchesQuery(owner.phone, searchQuery)) return true;
@@ -727,7 +731,7 @@ export function ClientDetailView({
   const handleRemoveOwner = async () => {
     if (!currentOwner) return;
     const confirmDelete = window.confirm(
-      `¿Desea eliminar de forma permanente a ${currentOwner.name} y todas sus mascotas registradas de la base de datos de Le Petit Can?`
+      `¿Desea desactivar a ${currentOwner.name} y ocultar a todas sus mascotas registradas de la base de datos de Le Petit Can?`
     );
     if (confirmDelete && onDeleteOwner) {
       await onDeleteOwner(currentOwner.id);
@@ -881,7 +885,7 @@ export function ClientDetailView({
   const handleRemovePet = async () => {
     if (!currentOwner || !currentPet || currentPet.name === "Sin Mascota") return;
     const confirmDel = window.confirm(
-      `¿Está absolutamente seguro de que desea eliminar la ficha de la mascota ${currentPet.name}?`
+      `¿Está absolutamente seguro de que desea desactivar la ficha de la mascota ${currentPet.name}?`
     );
     if (confirmDel) {
       if (onDeletePet) {
@@ -1035,11 +1039,20 @@ export function ClientDetailView({
             Fichas de Clientes
           </h2>
           <p className="font-sans text-xs text-on-surface-variant">
-            Administración completa de propietarios, edición de rangos, eliminación de base de datos y compartir fichas.
+            Administración completa de propietarios, alta de mascotas, archivado de clientes y compartir fichas.
           </p>
         </div>
         
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex gap-2 w-full md:w-auto items-center">
+          <label className="flex items-center gap-2 text-[11px] font-bold text-on-surface cursor-pointer shrink-0 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded border-outline-variant text-primary focus:ring-primary accent-primary h-4 w-4"
+            />
+            Ver desactivados
+          </label>
           <button
             onClick={openCreateOwner}
             className="flex-1 md:flex-initial bg-primary hover:bg-primary-dark text-white px-5 py-3 rounded-full font-sans text-xs font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-transform duration-200 hover:scale-102"
@@ -1110,8 +1123,11 @@ export function ClientDetailView({
                     className="w-12 h-12 rounded-full object-cover border-2 border-white shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-sans text-sm font-bold truncate leading-tight">
+                    <h4 className="font-sans text-sm font-bold truncate leading-tight flex items-center gap-1.5">
                       {owner.name}
+                      {owner.archivado && (
+                        <span className="text-[9px] font-sans bg-stone-200 text-stone-600 px-2 py-0.5 rounded-full uppercase shrink-0">Inactivo</span>
+                      )}
                     </h4>
                     <p className={`text-[10px] truncate ${isSelected ? "text-white/80" : "text-outline"}`}>
                       {owner.phone} • {owner.contact}
@@ -1140,7 +1156,7 @@ export function ClientDetailView({
           
           <div className="p-4 bg-white/50 rounded-2xl text-[10px] leading-relaxed text-on-surface-variant font-sans border border-outline-variant/10">
             <span className="font-bold text-primary block mb-0.5">💡 Administrar Base de Datos:</span>
-            Usa el botón superior para añadir clientes, y el panel derecho para editar, eliminar, descargar el historial del cliente o compartirlo por canales.
+            Usa el botón superior para añadir clientes, y el panel derecho para editar, desactivar, descargar el historial del cliente o compartirlo por canales. Los clientes desactivados se pueden reactivar con "Ver desactivados".
           </div>
         </section>
 
@@ -1227,13 +1243,15 @@ export function ClientDetailView({
                   
                   {/* Administrative Client Actions */}
                   <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                    <button
-                      onClick={openEditOwner}
-                      className="w-9 h-9 rounded-full bg-secondary/10 hover:bg-secondary/20 text-secondary flex items-center justify-center transition-all active:scale-92"
-                      title="Modificar Datos Cliente"
-                    >
-                      <span className="material-symbols-outlined text-base">edit</span>
-                    </button>
+                    {!currentOwner.archivado && (
+                      <button
+                        onClick={openEditOwner}
+                        className="w-9 h-9 rounded-full bg-secondary/10 hover:bg-secondary/20 text-secondary flex items-center justify-center transition-all active:scale-92"
+                        title="Modificar Datos Cliente"
+                      >
+                        <span className="material-symbols-outlined text-base">edit</span>
+                      </button>
+                    )}
                     <button
                       onClick={handleExportJson}
                       className="w-9 h-9 rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center justify-center transition-all active:scale-92"
@@ -1248,13 +1266,23 @@ export function ClientDetailView({
                     >
                       <span className="material-symbols-outlined text-base">share</span>
                     </button>
-                    <button
-                      onClick={handleRemoveOwner}
-                      className="w-9 h-9 rounded-full bg-warm-terracotta/10 hover:bg-warm-terracotta/20 text-warm-terracotta flex items-center justify-center transition-all active:scale-92"
-                      title="Eliminar de la Base de Datos"
-                    >
-                      <span className="material-symbols-outlined text-base font-bold">delete</span>
-                    </button>
+                    {currentOwner.archivado ? (
+                      <button
+                        onClick={() => onReactivateOwner?.(currentOwner.id)}
+                        className="w-9 h-9 rounded-full bg-green-50 hover:bg-green-600 text-green-700 hover:text-white flex items-center justify-center transition-all active:scale-92"
+                        title="Reactivar cliente"
+                      >
+                        <span className="material-symbols-outlined text-base font-bold">restore</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleRemoveOwner}
+                        className="w-9 h-9 rounded-full bg-warm-terracotta/10 hover:bg-warm-terracotta/20 text-warm-terracotta flex items-center justify-center transition-all active:scale-92"
+                        title="Desactivar cliente"
+                      >
+                        <span className="material-symbols-outlined text-base font-bold">delete</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 

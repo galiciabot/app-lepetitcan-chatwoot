@@ -74,6 +74,7 @@ export interface RawPartner {
   comment?: string | false;
   image_1920?: string | false;
   pets?: RawPartner[];
+  archivado?: boolean;
 }
 
 export async function getContacts(): Promise<RawPartner[]> {
@@ -499,6 +500,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
       lastVisitDate: "",
       lastVisitService: "",
       history: [],
+      archivado: rp.archivado === true,
     };
   });
 
@@ -515,6 +517,7 @@ export function partnerToOwner(raw: RawPartner): Owner {
     since: "",
     avatar: imageFieldToUrl(raw.image_1920) || `https://ui-avatars.com/api/?name=${encodeURIComponent(raw.name)}&background=755848&color=fff&size=128`,
     pets,
+    archivado: raw.archivado === true,
   };
 }
 

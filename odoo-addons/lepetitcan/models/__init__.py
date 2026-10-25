@@ -4,3 +4,4 @@ from . import trabajador
 from . import bloqueo
 from . import configuracion
 from . import calendar_event
+from . import res_partner
