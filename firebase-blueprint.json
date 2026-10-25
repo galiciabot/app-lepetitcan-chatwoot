@@ -10,7 +10,7 @@
         "period": { "type": "string", "enum": ["AM", "PM"] },
         "dogName": { "type": "string", "description": "Name of the dog being groomed" },
         "breed": { "type": "string", "description": "Dog breed name" },
-        "size": { "type": "string", "enum": ["Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"] },
+        "size": { "type": "string", "enum": ["Pequeño", "Mediano", "Grande", "Gigante"] },
         "ownerName": { "type": "string", "description": "First and last name of the pet owner" },
         "service": { "type": "string", "description": "Type of service requested" },
         "status": { "type": "string", "enum": ["Confirmado", "En camino", "Pendiente", "Confirmada", "En Camino"] },

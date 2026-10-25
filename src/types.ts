@@ -4,7 +4,7 @@ export interface Appointment {
   period: "AM" | "PM";
   dogName: string;
   breed: string;
-  size: "Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante" | "Pequeño Diamante";
+  size: "Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante";
   ownerName: string;
   service: string;
   status: string;
@@ -196,7 +196,7 @@ export interface Pet {
   id: string;
   name: string;
   breed: string;
-  size: "Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante" | "Pequeño Diamante";
+  size: "Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante";
   behavior: string;
   birthDate: string;
   avatarUrl: string;

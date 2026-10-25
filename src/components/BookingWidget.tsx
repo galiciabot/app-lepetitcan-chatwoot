@@ -47,7 +47,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
   const [dogName, setDogName] = useState<string>("");
   const [breed, setBreed] = useState<string>("Otro");
   const [customBreed, setCustomBreed] = useState<string>("");
-  const [dogSize, setDogSize] = useState<"Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante" | "Pequeño Diamante">("Pequeño");
+  const [dogSize, setDogSize] = useState<"Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante">("Pequeño");
 
   // Optional supplements (from the spreadsheet)
   const [supplements, setSupplements] = useState({
@@ -199,8 +199,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
   // Size pricing multipliers as configured with real Le Petit Can rules
   const getCalculatedPrice = (): number => {
     if (!selectedService) return 0;
-    let sizeKey: string = dogSize;
-    if (sizeKey === "Pequeño Diamante") sizeKey = "Toy";
+    const sizeKey: string = dogSize;
     
     const pricingVal = selectedService.pricing[sizeKey] || selectedService.pricing["Pequeño"];
     let basePriceNum = pricingVal?.priceNum || 30;
@@ -221,8 +220,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
 
   const getCalculatedPriceString = () => {
     if (!selectedService) return "";
-    let sizeKey: string = dogSize;
-    if (sizeKey === "Pequeño Diamante") sizeKey = "Toy";
+    const sizeKey: string = dogSize;
     
     const pricingVal = selectedService.pricing[sizeKey] || selectedService.pricing["Pequeño"];
     if (pricingVal?.isHourly) {
@@ -258,7 +256,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
     const periodType = parseInt(selectedTime.split(":")[0]) < 12 ? "AM" : "PM";
     const fullName = `${ownerFirstName.trim()} ${ownerLastName.trim()}`.trim();
 
-    const sizeKey = dogSize === "Pequeño Diamante" ? "Toy" : dogSize;
+    const sizeKey = dogSize;
     const priceInfo = selectedService.pricing[sizeKey] || selectedService.pricing["Pequeño"];
     const duracionTotalMin = disponibilidad?.duracionTotalMin || priceInfo?.durationMin;
     const ownerSelected = selectedContactId ? (owners || []).find((o) => o.id === selectedContactId) : undefined;
@@ -447,7 +445,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
                 { value: "Grande", label: "Grande (21-35 kg)", desc: "Ej: Labrador, Golden" },
                 { value: "Gigante", label: "Gigante (+35 kg)", desc: "Ej: Mastín, S. Bernardo" }
               ].map((sz) => {
-                const isSelected = dogSize === sz.value || (dogSize === "Pequeño Diamante" && sz.value === "Toy");
+                const isSelected = dogSize === sz.value;
                 return (
                   <button
                     key={sz.value}
@@ -472,7 +470,7 @@ export function BookingWidget({ onAppointmentCreated, onNavigateBack, services, 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {activeServices.map((srv) => {
               const works = selectedService.id === srv.id;
-              const sizeKey = dogSize === "Pequeño Diamante" ? "Toy" : dogSize;
+              const sizeKey = dogSize;
               const priceInfo = srv.pricing[sizeKey] || srv.pricing["Pequeño"];
               return (
                 <div
@@ -942,7 +940,7 @@ value={ownerZipCode}
                 <div className="flex justify-between items-center">
                   <span>Tratamiento base: <b className="text-primary">{selectedService.title}</b></span>
                   <span className="font-mono font-bold text-primary">
-                    {selectedService.pricing[dogSize === "Pequeño Diamante" ? "Toy" : dogSize]?.priceDisp}
+                    {selectedService.pricing[dogSize]?.priceDisp}
                   </span>
                 </div>
                 {(supplements.nudos || supplements.comportamiento || supplements.seniors || supplements.lazos) && (

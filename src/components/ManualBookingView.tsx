@@ -3,7 +3,7 @@ import { Owner, Pet, Service, Trabajador, Appointment, Disponibilidad } from "..
 import { getDisponibilidad, createContact, createPet } from "../services/odooService";
 import { SPANISH_DOG_BREEDS, BEHAVIOR_PRESETS } from "../constants/petOptions";
 
-const SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante", "Pequeño Diamante"];
+const SIZES = ["Toy", "Pequeño", "Mediano", "Grande", "Gigante"];
 
 interface ManualBookingViewProps {
   owners: Owner[];

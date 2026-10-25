@@ -539,7 +539,7 @@ export function ClientDetailView({
   const [petForm, setPetForm] = useState({
     name: "",
     breed: "Mestizo",
-    size: "Pequeño" as "Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante" | "Pequeño Diamante",
+    size: "Pequeño" as "Toy" | "Pequeño" | "Mediano" | "Grande" | "Gigante",
     behavior: "Manso / Cariñoso",
     birthDate: "2 Años",
     avatarUrl: PRESET_PET_AVATARS[0],

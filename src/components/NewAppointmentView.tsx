@@ -7,7 +7,7 @@ interface NewAppointmentViewProps {
 
 export function NewAppointmentView({ onSuccess }: NewAppointmentViewProps) {
   const sizes = [
-    { id: "Toy", sizeLabel: "Pequeño Diamante", weight: "< 4 kg", duration: "45 min", price: "desde 25€", tag: "TOY" },
+    { id: "Toy", sizeLabel: "Toy", weight: "< 4 kg", duration: "45 min", price: "desde 25€", tag: "TOY" },
     { id: "Mini", sizeLabel: "Pequeño", weight: "4 - 10 kg", duration: "60 min", price: "desde 35€", tag: "MINI" },
     { id: "Midi", sizeLabel: "Mediano", weight: "11 - 20 kg", duration: "90 min", price: "desde 45€", tag: "MIDI" },
     { id: "Maxi", sizeLabel: "Grande", weight: "21 - 35 kg", duration: "120 min", price: "desde 60€", tag: "MAXI" },
