@@ -144,6 +144,7 @@ export interface ChatMessage {
   sender: "client" | "me";
   text: string;
   time: string;
+  createdAt?: number;
   isAudio?: boolean;
   audioDuration?: string;
   channel?: "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | "whatsapp" | "instagram" | "facebook";
@@ -153,8 +154,9 @@ export interface ChatMessage {
 
 export interface ChatThread {
   id: string;
-  dogName: string;
-  ownerName: string;
+  contactName?: string;
+  dogName?: string;
+  ownerName?: string;
   channel: "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | "whatsapp" | "instagram" | "facebook";
   avatarUrl: string;
   lastMessageText: string;

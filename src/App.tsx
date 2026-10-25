@@ -24,6 +24,7 @@ import { SecurityLopdView } from "./components/SecurityLopdView";
 // Firebase imports — only Auth, no Firestore
 import { auth, googleSignIn, logoutGoogle, initAuth } from "./firebase";
 import * as odooService from "./services/odooService";
+import * as chatwootService from "./services/chatwootService";
 
 // Initial High-Fidelity Data for database seeding
 const INITIAL_DEMO_APPOINTMENTS: Appointment[] = [
@@ -1653,6 +1654,13 @@ export default function App() {
       } catch (err) {
         console.warn("[Odoo] Bloqueos load failed:", err);
       }
+      try {
+        const threads = await chatwootService.listConversations();
+        console.log("[Chatwoot] Conversations loaded:", threads?.length, "items");
+        if (threads?.length) setChatThreads(threads);
+      } catch (err) {
+        console.warn("[Chatwoot] Conversations load failed:", err);
+      }
     }
     loadFromOdoo();
   }, []);
@@ -2250,70 +2258,9 @@ export default function App() {
     ]
   });
 
-  const [chatThreads, setChatThreads] = useState<ChatThread[]>([
-    {
-      id: "ch1",
-      dogName: "Sofía y Rocky",
-      ownerName: "Sofía Larrea",
-      channel: "Web",
-      avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAWQ0TP2GwJweHEQOk-oElvihstkjIhq8Whku_Gf23AYuRj5bFJCACUtHC2t0SXuNbShOEx8hpydKwsXl9HmAQt5S2kBHQivyAlKav2VsNDSui9GuCCrSjSot2PY7LGn5aO7C_BRy2kbLjKOmTrNeR3WPBihi99pQFiMjGDNYPXmwkmeXOL2ERvtN8-SSdj19oyqXg167sA84R4PAy6gH14DOIAnSe0U2vVOyVzOYBQvehjScIX2MyXXv7v0vf3arf-jjQXwEe6Beo",
-      lastMessageText: "¿Podemos confirmar el baño para mañana?",
-      lastMessageTime: "10:45",
-      unread: true,
-      resolved: false,
-      messages: [
-        { id: "m1", sender: "client", text: "Hola! Disculpa la molestia, queríamos confirmar si Rocky tiene cupo para el baño mañana a las 10am.", time: "10:42" },
-        { id: "m2", sender: "me", text: "¡Hola Sofía! Claro que sí, tenemos el espacio reservado para Rocky a las 10:00. ¿Le hacemos el corte habitual de las puntas también?", time: "10:44" },
-        { id: "m3", sender: "client", text: "¡Genial! Sí, por favor, el corte igual que la vez pasada. ¿Podemos confirmar el baño para mañana?", time: "10:45" }
-      ]
-    },
-    {
-      id: "ch2",
-      dogName: "Marco y Luna",
-      ownerName: "Marco Sanz",
-      channel: "WhatsApp",
-      avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuDX-Jco14qHQpxRyCk4Ekx0E2ogvHq88fBjKIkyxOluhF2ivq39QgBs0NqoHhWnMYwZMFVMEfOm6U9bhCkeSbp4E0QfdkXogG6g0AV99RKu-MjFgKrAXh5W0yE8ivKVGCX6Hd5dMevsfUYV5xmgvN7lIzvpHyOESpcf03vP5-aeIaT6euizi8XgaYZFyt9AkopvTB_OVwx4okzX4jnoFNDt01x_bs_VYRKdTYaoLLmV-9cNCYiIuPr-mRxVh3A2zVkRnu76Xu8sV4I",
-      lastMessageText: "Gracias por las fotos, quedó divina.",
-      lastMessageTime: "Ayer",
-      unread: false,
-      resolved: false,
-      messages: [
-        { id: "m_l1", sender: "client", text: "Hola, ¿cómo va la sesión de Luna?", time: "Ayer 15:30" },
-        { id: "m_l2", sender: "me", text: "¡Hola Marco! Acaba de salir de la hidromasaje y está súper tranquila. En breve te enviamos fotos.", time: "Ayer 15:35" },
-        { id: "m_l3", sender: "client", text: "Gracias por las fotos, quedó divina.", time: "Ayer 16:00" }
-      ]
-    },
-    {
-      id: "ch3",
-      dogName: "Lucía y Nube",
-      ownerName: "Lucía Rivas",
-      channel: "Instagram",
-      avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuCiZgzSTpUft2MZCSLr9oiENrEiLA9Ghyo_4nwUrd4vgFxoV7wdrOMLU_-nKelIfmcboAGNXJqV4I-h9sZgPN3Rv4QGe7IWMLZQWgjS1qIXLZwl9bEAIXln0gr_lhbLXFay33mYfhfhvio9tnw0PpDIjeldpbhjAqTqNISoO4O83ncqoq8ijqgRe4LTtHK9HuXNPviJGUA1KokUZ0qnkL7ydKQQ-JJIZodaD-0G53wB1TTdaVAFTsXyOR1mL8WYN2zD9kSCDWkalFQ",
-      lastMessageText: "¿Tienen cupos para guardería?",
-      lastMessageTime: "Lunes",
-      unread: false,
-      resolved: false,
-      messages: [
-        { id: "m_n1", sender: "client", text: "Buenas tardes, ¿tienen cupos para guardería la próxima semana?", time: "Lunes 12:15" }
-      ]
-    },
-    {
-      id: "ch4",
-      dogName: "Andrés y Bongo",
-      ownerName: "Andrés Larraín",
-      channel: "Facebook",
-      avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuCYyMQyeg5r9m1wZefAOM7IbnxMHdTj2nHflHBYxjlcaEnoixXzWUC5W5mCyjf0gF3t8ty9I-3054680_ev1x4Jg_I2sBbB12H_LS8puAGtZvkNxh5Rr2wo8ghUfBIYafn0RODme3rAcEyrROUAyCvobb08i0iMqfCPkE0aOuAo4ItfybdIP0KMPWseUqr29Y3NEfp8pAA8278c-UZmK5Sfji-HOCWs07-xYDfbO0jgbfPj3jP0m8V2LvaTit_8wFN3oHn_A2dIGjE",
-      lastMessageText: "Bongo ya está listo para su paseo.",
-      lastMessageTime: "20 Oct",
-      unread: false,
-      resolved: true,
-      messages: [
-        { id: "m_b1", sender: "client", text: "¡Hola! Confirmando que Bongo ya está listo para su paseo.", time: "20 Oct 10:10" }
-      ]
-    }
-  ]);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
 
-  const [activeChatId, setActiveChatId] = useState<string | null>("ch1");
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
   const handleOpenChatFromDashboard = (chatId: string) => {
     setActiveChatId(chatId);
@@ -2586,20 +2533,14 @@ export default function App() {
               />
             )}
 
-            {currentView === "messaging" && (() => {
-              const currentActiveId = activeChatId || "ch1";
-              const thread = chatThreads.find((t) => t.id === currentActiveId);
-              const ownerObj = thread ? owners.find((o) => o.name.toLowerCase() === thread.ownerName.toLowerCase()) : undefined;
-              return (
-                <MessagingView
-                  chatThreads={chatThreads}
-                  onUpdateThreads={setChatThreads}
-                  activeChatId={currentActiveId}
-                  setActiveChatId={setActiveChatId}
-                  clientChannelsConfig={ownerObj?.channels}
-                />
-              );
-            })()}
+            {currentView === "messaging" && (
+              <MessagingView
+                chatThreads={chatThreads}
+                onUpdateThreads={setChatThreads}
+                activeChatId={activeChatId}
+                setActiveChatId={setActiveChatId}
+              />
+            )}
 
             {currentView === "new_appointment" && (
               <ManualBookingView

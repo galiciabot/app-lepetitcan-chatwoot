@@ -1,81 +1,70 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ChatThread, ChatMessage, MetaChannelConfig } from "../types";
+import { ChatThread, ChatMessage } from "../types";
 import * as chatwootService from "../services/chatwootService";
 
-// Audio Playback Player Component for playable audio note bubbles
-export function AudioPlaybackWidget({ durationStr, isMe }: { durationStr: string; isMe: boolean }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
+const CHANNEL_COLORS: Record<string, string> = {
+  WhatsApp: "bg-green-100 text-green-700",
+  Instagram: "bg-pink-100 text-pink-700",
+  Facebook: "bg-blue-100 text-blue-700",
+  Web: "bg-stone-200 text-stone-700",
+  Gmail: "bg-red-100 text-red-600",
+};
 
-  useEffect(() => {
-    let interval: any;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            setIsPlaying(false);
-            return 0;
-          }
-          return prev + 6;
-        });
-      }, 150);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
+function getInitial(name?: string): string {
+  const trimmed = (name || "C").trim();
+  return trimmed.charAt(0).toUpperCase();
+}
 
+function channelKey(channel: string): keyof typeof CHANNEL_COLORS {
+  const lower = channel.toLowerCase();
+  if (lower === "whatsapp") return "WhatsApp";
+  if (lower === "instagram") return "Instagram";
+  if (lower === "facebook") return "Facebook";
+  if (lower === "gmail") return "Gmail";
+  return "Web";
+}
+
+function ContactAvatar({
+  name,
+  avatarUrl,
+  channel,
+  size = "md",
+}: {
+  name?: string;
+  avatarUrl?: string;
+  channel: string;
+  size?: "sm" | "md";
+}) {
+  const sizeClass = size === "sm" ? "w-12 h-12 text-base" : "w-14 h-14 text-lg";
+  if (avatarUrl) {
+    return (
+      <img
+        alt={name || "contacto"}
+        className={`${sizeClass} rounded-2xl object-cover shadow-xs border border-stone-100`}
+        src={avatarUrl}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
   return (
-    <div className="flex items-center gap-2.5 py-1 bg-transparent min-w-[180px] sm:min-w-[220px]">
-      <button
-        type="button"
-        onClick={() => setIsPlaying(!isPlaying)}
-        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer ${
-          isMe ? "bg-white text-[#cf9681]" : "bg-[#cf9681] text-white"
-        }`}
-        title={isPlaying ? "Pausar" : "Reproducir nota de voz"}
-      >
-        <span className="material-symbols-outlined text-[18px]">
-          {isPlaying ? "pause" : "play_arrow"}
-        </span>
-      </button>
-      
-      <div className="flex-1">
-        {/* Equalizer-like wave-bars */}
-        <div className="flex gap-[2px] items-center h-4 py-1">
-          {[1.5, 3.2, 2.1, 4.2, 3.1, 1.8, 4.0, 1.5, 3.2, 4.5, 2.0, 3.6, 1.2, 3.5, 1.8].map((height, idx, arr) => {
-            const barProgress = (idx / arr.length) * 100;
-            const isFilled = progress >= barProgress;
-            return (
-              <span
-                key={idx}
-                className="w-[2.5px] rounded-full transition-all duration-150"
-                style={{
-                  height: `${height * 3}px`,
-                  backgroundColor: isFilled
-                    ? (isMe ? "rgba(255,255,255,1)" : "var(--color-primary)")
-                    : (isMe ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.15)")
-                }}
-              />
-            );
-          })}
-        </div>
-        <div className="flex justify-between items-center text-[8px] mt-0.5 opacity-75 font-mono">
-          <span>{isPlaying ? `0:0${Math.round((progress * parseFloat(durationStr.split(":")[1] || "5")) / 100)}` : "0:00"}</span>
-          <span className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-[9px]">mic</span>
-            {durationStr}
-          </span>
-        </div>
-      </div>
+    <div
+      className={`${sizeClass} rounded-2xl flex items-center justify-center shadow-xs border border-stone-100 font-serif font-bold ${CHANNEL_COLORS[channelKey(channel)] || CHANNEL_COLORS.Web}`}
+    >
+      {getInitial(name)}
     </div>
   );
 }
 
 interface MessagingViewProps {
   chatThreads: ChatThread[];
-  onUpdateThreads: (updated: ChatThread[]) => void;
-  activeChatId: string;
+  onUpdateThreads: React.Dispatch<React.SetStateAction<ChatThread[]>>;
+  activeChatId: string | null;
   setActiveChatId: (id: string | null) => void;
-  clientChannelsConfig?: MetaChannelConfig;
+}
+
+function messagesEqual(a: ChatMessage[], b: ChatMessage[]) {
+  if (a.length !== b.length) return false;
+  return a.every((m, i) => m.id === b[i].id && m.text === b[i].text);
 }
 
 export function MessagingView({
@@ -83,341 +72,110 @@ export function MessagingView({
   onUpdateThreads,
   activeChatId,
   setActiveChatId,
-  clientChannelsConfig,
 }: MessagingViewProps) {
   const [filter, setFilter] = useState<"Todos" | "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | string>("Todos");
   const [inputText, setInputText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showSearch, setShowSearch] = useState<boolean>(false);
-  const [isRetryingConnection, setIsRetryingConnection] = useState<boolean>(false);
-  const [isMetaConnected, setIsMetaConnected] = useState<boolean>(true);
-  const [showErrorBanner, setShowErrorBanner] = useState<boolean>(true);
-  
+  const [isSending, setIsSending] = useState<boolean>(false);
+  const [sendError, setSendError] = useState<string>("");
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeChatIdRef = useRef<string | null>(activeChatId);
+  activeChatIdRef.current = activeChatId;
 
-  // Voice & Dictation States
-  const [isDictating, setIsDictating] = useState(false);
-  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [pulseCount, setPulseCount] = useState(0);
-  const recordingTimerRef = useRef<any>(null);
-  const recognitionRef = useRef<any>(null);
-
-  // Setup speech recognition for messages dictation
+  // Inbox poll: refresh conversation list every 10s, preserving loaded messages.
   useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
-      rec.continuous = false;
-      rec.interimResults = false;
-      rec.lang = "es-ES";
-
-      rec.onstart = () => {
-        setIsDictating(true);
-      };
-
-      rec.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) {
-          setInputText((prev) => prev ? prev + " " + transcript : transcript);
-        }
-      };
-
-      rec.onerror = (e: any) => {
-        console.warn("Message dictation error: fallback to typing simulation", e);
-        handleSimulatedDictation();
-      };
-
-      rec.onend = () => {
-        setIsDictating(false);
-      };
-
-      recognitionRef.current = rec;
-    }
-  }, []);
-
-  const handleSimulatedDictation = () => {
-    setIsDictating(true);
-    const mockPhrases = [
-      "Hola, te confirmo el turno para el peinado de mañana.",
-      "El servicio contratado incluye corte de uñas, deslanado profundo y perfumado.",
-      "Tu mascota ya se encuentra lista para recoger en Atelier Canino.",
-      "Muchas gracias por confiar en nuestro servicio premium de peluquería."
-    ];
-    const phrase = mockPhrases[Math.floor(Math.random() * mockPhrases.length)];
-    setTimeout(() => {
-      setInputText((prev) => prev ? prev + " " + phrase : phrase);
-      setIsDictating(false);
-    }, 2500);
-  };
-
-  const toggleDictate = () => {
-    if (isDictating) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      } else {
-        setIsDictating(false);
-      }
-      return;
-    }
-
-    if (recognitionRef.current) {
+    let active = true;
+    const load = async () => {
       try {
-        recognitionRef.current.start();
+        const incoming = await chatwootService.listConversations();
+        if (!active) return;
+        onUpdateThreads((prev) => {
+          const prevById = new Map<string, ChatThread>();
+          prev.forEach((t) => prevById.set(t.id, t));
+          return incoming.map((t) => {
+            const prevThread = prevById.get(t.id);
+            const isOpen = activeChatIdRef.current === t.id;
+            return {
+              ...t,
+              unread: isOpen ? false : t.unread,
+              messages: prevThread && prevThread.messages.length > 0 ? prevThread.messages : t.messages,
+            };
+          });
+        });
       } catch (err) {
-        handleSimulatedDictation();
+        console.warn("[MessagingView] Inbox poll failed:", err);
       }
-    } else {
-      handleSimulatedDictation();
-    }
-  };
-
-  // Timer for voice note recording
-  useEffect(() => {
-    if (isRecordingAudio) {
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-        setPulseCount((c) => (c + 1) % 4);
-      }, 1000);
-    } else {
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-      setRecordingSeconds(0);
-      setPulseCount(0);
-    }
-    return () => {
-      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
-  }, [isRecordingAudio]);
+    load();
+    const interval = setInterval(load, 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [onUpdateThreads]);
 
-  const startVoiceRecording = () => {
-    setIsRecordingAudio(true);
-  };
+  const activeThread = chatThreads.find((t) => t.id === activeChatId) || null;
 
-  const cancelVoiceRecording = () => {
-    setIsRecordingAudio(false);
-  };
-
-  const dispatchSendMessage = async (thread: ChatThread, text: string, isAudio = false, audioDuration?: string) => {
-    try {
-      const newMsg = await chatwootService.sendMessage(thread.id, { text, isAudio, audioDuration });
-      return newMsg;
-    } catch (err) {
-      console.warn("[MessagingView] chatwootService send failed, using local fallback:", err);
-      const fallback: ChatMessage = {
-        id: `m_sent_${Date.now()}`,
-        sender: "me",
-        text,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isAudio,
-        audioDuration,
-        channel: thread.channel
-      };
-      return fallback;
-    }
-  };
-
-  const sendVoiceRecording = async () => {
-    if (!activeThread) return;
-    const duration = recordingSeconds > 0 ? recordingSeconds : 5;
-    const durationStr = `0:0${duration}`;
-
-    try {
-      const newVoiceMsg = await dispatchSendMessage(activeThread, "Nota de voz", true, durationStr);
-      const updatedMessages = [...activeThread.messages, newVoiceMsg];
-      
-      let updatedThreads: ChatThread[] = chatThreads.map((t): ChatThread => {
-        if (t.id === activeThread.id) {
-          return {
-            ...t,
-            messages: updatedMessages,
-            lastMessageText: "🎵 Nota de voz",
-            lastMessageTime: "Ahora mismo"
-          };
-        }
-        return t;
-      });
-      onUpdateThreads(updatedThreads);
-      setIsRecordingAudio(false);
-
-      // Simulate Client Voice/Text Response after 1.5s
-      setTimeout(() => {
-        const isVoiceReply = Math.random() > 0.4;
-        let replyMsg: ChatMessage;
-
-        if (isVoiceReply) {
-          replyMsg = {
-            id: `m_rep_${Date.now() + 1}`,
-            sender: "client",
-            text: "Nota de voz recibida",
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isAudio: true,
-            audioDuration: "0:06",
-            channel: activeThread.channel
-          };
-        } else {
-          replyMsg = {
-            id: `m_rep_${Date.now() + 1}`,
-            sender: "client",
-            text: "¡Qué bien suena! Muchas gracias por el audio con los detalles, nos vemos en un rato.",
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            channel: activeThread.channel
-          };
-        }
-
-        onUpdateThreads(
-          updatedThreads.map((t): ChatThread => {
-            if (t.id === activeThread.id) {
-              return {
-                ...t,
-                messages: [...updatedMessages, replyMsg],
-                lastMessageText: isVoiceReply ? "🎵 Nota de voz" : replyMsg.text,
-                lastMessageTime: "Hace 1 min",
-              };
-            }
-            return t;
+  // Active conversation messages poll: refresh every 3s while a thread is open.
+  useEffect(() => {
+    if (!activeChatId) return;
+    let active = true;
+    const load = async () => {
+      try {
+        const fetched = await chatwootService.listMessages(activeChatId);
+        if (!active) return;
+        onUpdateThreads((prev) =>
+          prev.map((t) => {
+            if (t.id !== activeChatId) return t;
+            if (messagesEqual(t.messages, fetched)) return t;
+            return { ...t, messages: fetched };
           })
         );
-      }, 1800);
-    } catch (err) {
-      console.error("Error sending voice recording dispatch:", err);
-    }
-  };
-
-  // Dynamically query listMessages from Meta services on activeThread selection
-  useEffect(() => {
-    if (!activeThread) return;
-    
-    const loadServiceMessages = async () => {
-      try {
-        const fetched = await chatwootService.listMessages(activeThread.id);
-        if (fetched.length > 0) {
-          const threadMsgCount = activeThread.messages.length;
-          const fetchedMsgCount = fetched.length;
-          if (threadMsgCount !== fetchedMsgCount) {
-            const updated: ChatThread[] = chatThreads.map((t): ChatThread =>
-              t.id === activeThread.id ? { ...t, messages: fetched } : t
-            );
-            onUpdateThreads(updated);
-          }
-        }
       } catch (err) {
-        console.warn("[MessagingView] Error loading messages from Chatwoot:", err);
+        console.warn("[MessagingView] Messages poll failed:", err);
       }
     };
-    
-    loadServiceMessages();
-  }, [activeChatId]);
-
-  // Filter threads by connection channels and search query
-  const filteredThreads = chatThreads.filter((t) => {
-    const matchesFilter = filter === "Todos" ? true : t.channel.toLowerCase() === filter.toLowerCase();
-    const matchesSearch = searchQuery.trim() === "" ? true : (
-      t.dogName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.lastMessageText.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    return matchesFilter && matchesSearch;
-  });
-
-  // Get active thread
-  const activeThread = chatThreads.find((t) => t.id === activeChatId) || null;
+    load();
+    const interval = setInterval(load, 3000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [activeChatId, onUpdateThreads]);
 
   // Auto scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeThread?.messages]);
 
-  // Mark active as read when opening
+  // Mark active thread as read locally when opening
   useEffect(() => {
-    if (activeThread && activeThread.unread) {
-      const updated = chatThreads.map((t) =>
-        t.id === activeThread.id ? { ...t, unread: false } : t
-      );
-      onUpdateThreads(updated);
-    }
-  }, [activeChatId, activeThread?.id]);
-
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || !activeThread) return;
-
-    const textToSend = inputText;
-    setInputText("");
-
-    try {
-      const newMsg = await dispatchSendMessage(activeThread, textToSend);
-      const updatedMessages = [...activeThread.messages, newMsg];
-      
-      // Update threads state
-      let updatedThreads: ChatThread[] = chatThreads.map((t): ChatThread => {
-        if (t.id === activeThread.id) {
-          return {
-            ...t,
-            messages: updatedMessages,
-            lastMessageText: textToSend,
-            lastMessageTime: "Ahora mismo",
-          };
-        }
-        return t;
-      });
-
-      onUpdateThreads(updatedThreads);
-
-      // Simulate auto-reply after 1.5 seconds
-      setTimeout(() => {
-        const replies = [
-          "¡Excelente! Nos vemos pronto. ¡Y gracias por cuidar tan bien de mi mascota!",
-          "Perfecto, gracias por confirmarnos tan rápido. Atelier Canino es de absoluta confianza.",
-          "¡De acuerdo! Confiamos plenamente en el cuidado que le dan. Saludos.",
-          "¡Estupendo! Saludos a todo el equipo."
-        ];
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-
-        const replyMsg: ChatMessage = {
-          id: `m_${Date.now() + 1}`,
-          sender: "client",
-          text: randomReply,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          channel: activeThread.channel
-        };
-
-        onUpdateThreads(
-          updatedThreads.map((t): ChatThread => {
-            if (t.id === activeThread.id) {
-              return {
-                ...t,
-                messages: [...updatedMessages, replyMsg],
-                lastMessageText: randomReply,
-                lastMessageTime: "Hace 1 min",
-              };
-            }
-            return t;
-          })
-        );
-      }, 1500);
-    } catch (err) {
-      console.error("Error dispatching standard send:", err);
-    }
-  };
-
-  const handleToggleResolve = () => {
-    if (!activeThread) return;
-    const updated = chatThreads.map((t) =>
-      t.id === activeThread.id ? { ...t, resolved: !t.resolved } : t
+    if (!activeThread || !activeThread.unread) return;
+    onUpdateThreads((prev) =>
+      prev.map((t) => (t.id === activeThread.id ? { ...t, unread: false } : t))
     );
-    onUpdateThreads(updated);
+  }, [activeChatId]);
+
+  const filteredThreads = chatThreads.filter((t) => {
+    const matchesFilter = filter === "Todos" ? true : t.channel.toLowerCase() === filter.toLowerCase();
+    const contact = t.contactName || t.ownerName || "";
+    const matchesSearch =
+      searchQuery.trim() === ""
+        ? true
+        : contact.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.lastMessageText.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
+  const countByChannel = (channelName: string) => {
+    if (channelName === "Todos") return chatThreads.length;
+    return chatThreads.filter((t) => t.channel.toLowerCase() === channelName.toLowerCase()).length;
   };
 
-  const retryWhatsAppConnection = () => {
-    setIsRetryingConnection(true);
-    setTimeout(() => {
-      setIsRetryingConnection(false);
-      setShowErrorBanner(false);
-    }, 2000);
-  };
-
-  // Helper to get channel prefix / ID mapping
   const getThreadHashId = (id: string, channel: string) => {
-    const num = id.replace(/\D/g, "") || "9872";
+    const num = id.replace(/\D/g, "") || "0";
     const ch = channel.toLowerCase();
     if (ch === "whatsapp") return `#W-${num}`;
     if (ch === "instagram") return `#I-${num}`;
@@ -426,90 +184,74 @@ export function MessagingView({
     return `#WB-${num}`;
   };
 
-  // Calculate counters for chips
-  const countByChannel = (channelName: string) => {
-    if (channelName === "Todos") return chatThreads.length;
-    return chatThreads.filter((t) => t.channel.toLowerCase() === channelName.toLowerCase()).length;
+  const handleSendMessage = async () => {
+    const textToSend = inputText.trim();
+    if (!textToSend || !activeThread || isSending) return;
+
+    setInputText("");
+    setIsSending(true);
+    setSendError("");
+    try {
+      await chatwootService.sendMessage(activeThread.id, textToSend);
+      const fetched = await chatwootService.listMessages(activeThread.id);
+      onUpdateThreads((prev) =>
+        prev.map((t) =>
+          t.id === activeThread.id
+            ? { ...t, messages: fetched, lastMessageText: textToSend, lastMessageTime: "Ahora" }
+            : t
+        )
+      );
+    } catch (err) {
+      console.error("[MessagingView] Error sending message:", err);
+      setInputText(textToSend);
+      setSendError(err instanceof Error ? err.message : "No se pudo enviar el mensaje.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const handleCreateSimulatedChat = () => {
-    const names = [
-      { dog: "Kobe", owner: "Jesús Gómez", channel: "WhatsApp" as const, img: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=100" },
-      { dog: "Milú", owner: "Laura Castro", channel: "Instagram" as const, img: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=100" },
-      { dog: "Dante", owner: "Carlos Peña", channel: "Facebook" as const, img: "https://images.unsplash.com/photo-1537151608828-ea2b117b62d1?auto=format&fit=crop&q=80&w=100" }
-    ];
-    const picked = names[Math.floor(Math.random() * names.length)];
-    const newId = `ch_${Date.now()}`;
-    const newThread: ChatThread = {
-      id: newId,
-      dogName: picked.dog,
-      ownerName: picked.owner,
-      channel: picked.channel,
-      avatarUrl: picked.img,
-      lastMessageText: "¡Hola! Quisiera agendar un servicio.",
-      lastMessageTime: "Ahora mismo",
-      unread: true,
-      resolved: false,
-      messages: [
-        { id: `m_init_${Date.now()}`, sender: "client", text: `¡Hola! Quisiera agendar un servicio premium de peluquería para ${picked.dog}. ¿Tenéis disponibilidad?`, time: "Ahora mismo" }
-      ]
-    };
-
-    onUpdateThreads([newThread, ...chatThreads]);
-    setActiveChatId(newId);
+  const handleToggleResolve = () => {
+    if (!activeThread) return;
+    onUpdateThreads((prev) =>
+      prev.map((t) => (t.id === activeThread.id ? { ...t, resolved: !t.resolved } : t))
+    );
   };
 
   return (
     <div className="h-[calc(100vh-160px)] max-w-container-max mx-auto flex overflow-hidden rounded-[2.5rem] border border-[#cf9681]/25 bg-stone-50 shadow-sm relative">
-      
-      {/* Dynamic Conversation Sidebar / Inbox */}
+      {/* Conversation sidebar / inbox */}
       <aside
         className={`${
           activeChatId ? "hidden md:flex" : "flex"
         } w-full md:w-[380px] flex-shrink-0 flex-col border-r border-[#cf9681]/15 bg-[#fbf9f6]`}
       >
-        {/* Top Header matching exact brand system */}
         <header className="bg-white/85 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-stone-200">
           <div className="flex items-center gap-2.5">
-            <img
-              src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100"
-              alt="Avatar Iliana"
-              className="w-10 h-10 rounded-full object-cover border border-[#cf9681]/20"
-              referrerPolicy="no-referrer"
-            />
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[#cf9681] text-white font-serif text-lg font-bold">
+              L
+            </div>
             <div className="text-left">
               <h1 className="font-serif text-lg font-bold text-stone-700 tracking-tight leading-tight">Le Petit Can</h1>
-              <p className="text-[10px] font-sans text-stone-500 font-bold tracking-tight">Atelier Canino</p>
+              <p className="text-[10px] font-sans text-stone-500 font-bold tracking-tight">Bandeja omnicanal</p>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2.5">
-            {/* Meta Connection Status Indicator */}
-            <div className="bg-stone-100/80 px-3 py-1.5 rounded-full flex items-center gap-1.5 border border-stone-200" title="Estado del Servidor Meta">
-              <svg className="w-4 h-4 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2.04C6.5 2.04 2 6.53 2 12.06C2 17.06 5.66 21.21 10.44 21.96V14.96H7.9V12.06H10.44V9.85C10.44 7.34 11.93 5.96 14.22 5.96C15.31 5.96 16.45 6.15 16.45 6.15V8.62H15.19C13.95 8.62 13.56 9.39 13.56 10.18V12.06H16.34L15.89 14.96H13.56V21.96C18.34 21.21 22 17.06 22 12.06C22 6.53 17.5 2.04 12 2.04Z"/>
-              </svg>
-              <span className={`w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] ${isMetaConnected ? "animate-pulse" : "bg-red-500"}`}></span>
-            </div>
-            
-            <button
-              onClick={() => setShowSearch(!showSearch)}
-              className="p-1 px-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 rounded-full transition-colors cursor-pointer"
-              title="Buscar hilos"
-            >
-              <span className="material-symbols-outlined text-lg">search</span>
-            </button>
-          </div>
+
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="p-1 px-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 rounded-full transition-colors cursor-pointer"
+            title="Buscar conversaciones"
+          >
+            <span className="material-symbols-outlined text-lg">search</span>
+          </button>
         </header>
 
-        {/* Optional Search panel */}
         {showSearch && (
-          <div className="bg-white px-4 py-3 border-b border-stone-200/60 animate-in fade-in duration-200">
+          <div className="bg-white px-4 py-3 border-b border-stone-200/60">
             <div className="flex items-center gap-2 bg-stone-50 px-3 py-2 rounded-2xl border border-stone-200">
               <span className="material-symbols-outlined text-stone-400 text-sm">search</span>
               <input
                 type="text"
-                placeholder="Buscar por cliente o mascota..."
+                placeholder="Buscar por contacto o mensaje..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full text-xs font-sans text-stone-700 bg-transparent border-none focus:outline-none focus:ring-0 outline-none placeholder:text-stone-400"
@@ -523,27 +265,6 @@ export function MessagingView({
           </div>
         )}
 
-        {/* WhatsApp Server Error connection banner */}
-        {showErrorBanner && (
-          <div className="p-4 bg-red-50/90 border-b border-red-100/60 flex items-center gap-3.5 animate-in slide-in-from-top duration-300">
-            <div className="bg-red-100 p-2.5 rounded-2xl flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-red-600 text-base">cloud_off</span>
-            </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-red-950 text-[11px] font-bold">Error de conexión con WhatsApp</p>
-              <p className="text-red-700/80 text-[9px] font-medium truncate">Revisando estado de servidores n8n...</p>
-            </div>
-            <button
-              onClick={retryWhatsAppConnection}
-              disabled={isRetryingConnection}
-              className="bg-white hover:bg-red-50 text-red-600 px-3.5 py-1.5 rounded-full text-[10px] font-black border border-red-100 shadow-xs active:scale-95 transition-all cursor-pointer shrink-0"
-            >
-              {isRetryingConnection ? "Cargando..." : "Reintentar"}
-            </button>
-          </div>
-        )}
-
-        {/* Omnichannel Channel Filters */}
         <div className="px-4 py-3 flex flex-wrap gap-2 border-b border-stone-200/50 bg-white">
           {(["Todos", "WhatsApp", "Instagram", "Facebook", "Web", "Gmail"] as const).map((ch) => {
             const count = countByChannel(ch);
@@ -564,12 +285,11 @@ export function MessagingView({
           })}
         </div>
 
-        {/* Converstation List Section with 32px rounded style */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3.5">
           {filteredThreads.map((thread) => {
             const isSelected = activeChatId === thread.id;
             const threadHash = getThreadHashId(thread.id, thread.channel);
-            
+
             return (
               <div
                 key={thread.id}
@@ -577,17 +297,15 @@ export function MessagingView({
                 className={`group flex items-center p-4 rounded-[32px] cursor-pointer transition-all duration-300 border ${
                   isSelected
                     ? "bg-white border-[#cf9681]/45 shadow-[0_4px_20px_rgba(117,88,72,0.06)] scale-[0.99]"
-                    : "bg-white/80 border-stone-100/80 shadow-[0_4px_15px_rgba(117,88,72,0.02)] hover:bg-white hover:border-stone-200/85 hover:shadow-[0_4px_20px_rgba(117,88,72,0.04)]"
+                    : "bg-white/80 border-stone-100/80 shadow-[0_4px_15px_rgba(117,88,72,0.02)] hover:bg-white hover:border-stone-200/85"
                 }`}
               >
                 <div className="relative flex-shrink-0">
-                  <img
-                    alt={thread.dogName}
-                    className="w-14 h-14 rounded-2xl object-cover shadow-xs border border-stone-100"
-                    src={thread.avatarUrl || "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=100"}
-                    referrerPolicy="no-referrer"
+                  <ContactAvatar
+                    name={thread.contactName || thread.ownerName}
+                    avatarUrl={thread.avatarUrl}
+                    channel={thread.channel}
                   />
-                  {/* Channel icon absolute badget bottom right */}
                   <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-xs border border-stone-100 flex items-center justify-center">
                     {thread.channel.toLowerCase() === "whatsapp" ? (
                       <svg className="w-3.5 h-3.5 text-green-500" viewBox="0 0 24 24" fill="currentColor">
@@ -608,11 +326,11 @@ export function MessagingView({
                     )}
                   </div>
                 </div>
-                
+
                 <div className="ml-4 flex-1 min-w-0 text-left">
                   <div className="flex justify-between items-start mb-1">
                     <h3 className={`font-sans text-sm font-bold truncate pr-1 ${isSelected ? "text-stone-900" : "text-stone-700"}`}>
-                      {thread.dogName} y {thread.ownerName.split(" ")[0]}
+                      {thread.contactName || thread.ownerName}
                     </h3>
                     <span className="text-[10px] text-stone-400 font-bold tracking-tight shrink-0">
                       {thread.lastMessageTime}
@@ -633,7 +351,6 @@ export function MessagingView({
                   </div>
                 </div>
 
-                {/* Unread dot styled with exactly terracotta #cf9681 indicator */}
                 {thread.unread && (
                   <div className="w-3 h-3 rounded-full bg-[#cf9681] shadow-xs shadow-[#cf9681]/40 shrink-0 ml-1"></div>
                 )}
@@ -644,22 +361,17 @@ export function MessagingView({
           {filteredThreads.length === 0 && (
             <div className="text-center py-10 px-4">
               <span className="material-symbols-outlined text-4xl text-stone-300">forum</span>
-              <p className="text-xs text-stone-400 mt-2 font-medium">No se encontraron conversaciones con este filtro.</p>
+              <p className="text-xs text-stone-400 mt-2 font-medium">
+                {chatThreads.length === 0
+                  ? "No hay conversaciones todavía."
+                  : "No se encontraron conversaciones con este filtro."}
+              </p>
             </div>
           )}
         </div>
-
-        {/* Floating Action Button (FAB) matching terracotta #cf9681 theme */}
-        <button
-          onClick={handleCreateSimulatedChat}
-          className="absolute bottom-5 left-[305px] w-12 h-12 bg-[#cf9681] text-white rounded-full shadow-md shadow-[#cf9681]/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center z-40 cursor-pointer"
-          title="Simular nueva consulta entrante de cliente"
-        >
-          <span className="material-symbols-outlined text-xl">chat_bubble</span>
-        </button>
       </aside>
 
-      {/* Chat Thread Panel Section */}
+      {/* Chat thread panel */}
       <section
         className={`${
           activeChatId ? "flex" : "hidden md:flex"
@@ -667,56 +379,48 @@ export function MessagingView({
       >
         {activeThread ? (
           <>
-            {/* Thread Navigation / Customer Header */}
             <div className="p-4 md:p-6 flex justify-between items-center bg-white/75 backdrop-blur-md z-10 border-b border-stone-200">
               <div className="flex items-center gap-4 text-left">
-                {/* Back list button on mobile devices */}
                 <button
                   onClick={() => setActiveChatId(null)}
                   className="md:hidden text-stone-700 p-1 hover:bg-stone-100 rounded-full cursor-pointer flex items-center justify-center"
                 >
                   <span className="material-symbols-outlined text-xl font-bold">arrow_back</span>
                 </button>
-                
+
                 <div className="w-12 h-12 rounded-2xl overflow-hidden border border-stone-200 shadow-xs">
-                  <img
-                    alt={activeThread.dogName}
-                    className="w-full h-full object-cover"
-                    src={activeThread.avatarUrl || "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=100"}
-                    referrerPolicy="no-referrer"
+                  <ContactAvatar
+                    name={activeThread.contactName || activeThread.ownerName}
+                    avatarUrl={activeThread.avatarUrl}
+                    channel={activeThread.channel}
+                    size="sm"
                   />
                 </div>
                 <div>
                   <h2 className="font-serif text-base md:text-lg font-bold text-stone-800 leading-none">
-                    {activeThread.dogName} y {activeThread.ownerName}
+                    {activeThread.contactName || activeThread.ownerName}
                   </h2>
                   <span className="font-sans text-[10px] text-stone-500 flex items-center gap-1 mt-1 font-semibold">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block animate-pulse"></span>{" "}
-                    En línea • canal {activeThread.channel}
+                    Canal {activeThread.channel}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleResolve}
-                  className={`flex items-center gap-1 px-4 py-1.5 rounded-full font-sans text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer border ${
-                    activeThread.resolved
-                      ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
-                      : "bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[13px]">
-                    {activeThread.resolved ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span>
-                    {activeThread.resolved ? "Resuelto" : "Pendiente"}
-                  </span>
-                </button>
-              </div>
+              <button
+                onClick={handleToggleResolve}
+                className={`flex items-center gap-1 px-4 py-1.5 rounded-full font-sans text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer border ${
+                  activeThread.resolved
+                    ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                    : "bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[13px]">
+                  {activeThread.resolved ? "check_circle" : "radio_button_unchecked"}
+                </span>
+                <span>{activeThread.resolved ? "Resuelto" : "Pendiente"}</span>
+              </button>
             </div>
 
-            {/* Conversation messages board */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 flex flex-col bg-[#fdfcfb]">
               <div className="flex justify-center my-2">
                 <span className="px-4 py-1 bg-stone-100 rounded-full font-sans text-[9px] font-black text-stone-500 uppercase tracking-widest border border-stone-200/50">
@@ -735,141 +439,62 @@ export function MessagingView({
                   >
                     <div className="flex-1">
                       <div
-                        className={`p-4 rounded-[x2.5rem] text-xs sm:text-sm leading-relaxed text-left ${
+                        className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed text-left ${
                           isMe
-                            ? "bg-[#cf9681] text-white rounded-[24px] rounded-br-[4px] shadow-xs"
-                            : "bg-stone-100 text-stone-800 rounded-[24px] rounded-bl-[4px] shadow-3xs"
+                            ? "bg-[#cf9681] text-white rounded-br-[4px] shadow-xs"
+                            : "bg-stone-100 text-stone-800 rounded-bl-[4px] shadow-3xs"
                         }`}
                       >
-                        {msg.isAudio ? (
-                          <AudioPlaybackWidget durationStr={msg.audioDuration || "0:05"} isMe={isMe} />
-                        ) : (
-                          msg.text
-                        )}
+                        {msg.text}
                       </div>
                       <span
-                        className={`font-sans text-[9px] text-stone-400 mt-1 block flex items-center gap-1 ${
-                          isMe ? "justify-end mr-1" : "ml-1"
+                        className={`font-sans text-[9px] text-stone-400 mt-1 block ${
+                          isMe ? "text-right mr-1" : "text-left ml-1"
                         }`}
                       >
                         {msg.time}
-                        {isMe && (
-                          <span className="material-symbols-outlined text-[11px] text-[#cf9681] font-bold">
-                            done_all
-                          </span>
-                        )}
                       </span>
                     </div>
                   </div>
                 );
               })}
+              {activeThread.messages.length === 0 && (
+                <p className="text-center text-xs text-stone-400 py-8">No hay mensajes todavía en esta conversación.</p>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Text entry / dictation space with dictation toggle */}
             <div className="p-4 bg-[#fbf9f6] border-t border-[#cf9681]/15">
               <div className="max-w-3xl mx-auto">
-                {isRecordingAudio ? (
-                  /* Audio Voice Recorder Modes active visual */
-                  <div className="flex items-center justify-between bg-red-50 border border-red-200 p-2.5 rounded-[32px] px-5 animate-pulse select-none">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-3.5 w-3.5 relative">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-red-500"></span>
-                      </span>
-                      <span className="font-sans text-xs font-bold text-red-900">
-                        Nota de voz: {recordingSeconds < 10 ? `0:0${recordingSeconds}` : `0:${recordingSeconds}`}
-                      </span>
-
-                      {/* Equalizer inside voice recorder panel */}
-                      <div className="flex gap-[2.5px] items-center h-4 px-1 shrink-0">
-                        <span className={`w-[3px] bg-red-600 rounded transition-all duration-150 ${pulseCount === 0 ? "h-3" : "h-1.5"}`}></span>
-                        <span className={`w-[3px] bg-red-600 rounded transition-all duration-150 ${pulseCount === 1 ? "h-4" : "h-2"}`}></span>
-                        <span className={`w-[3px] bg-red-600 rounded transition-all duration-150 ${pulseCount === 2 ? "h-2.5" : "h-1"}`}></span>
-                        <span className={`w-[3px] bg-red-600 rounded transition-all duration-150 ${pulseCount === 3 ? "h-3.5" : "h-1.5"}`}></span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={cancelVoiceRecording}
-                        className="px-4 py-1.5 rounded-full border border-red-300 text-red-700 hover:bg-white font-sans text-[11px] font-black transition-all active:scale-95 cursor-pointer"
-                      >
-                        Cancelar
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={sendVoiceRecording}
-                        className="bg-[#cf9681] text-white hover:bg-[#b07865] w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-all active:scale-90 cursor-pointer"
-                        title="Enviar Nota de Voz"
-                      >
-                        <span className="material-symbols-outlined text-xl">send</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  /* Standard text writing / voice dictation triggers */
-                  <div className="flex items-center gap-2 bg-white p-2 rounded-[32px] shadow-sm border border-stone-200 relative">
-                    <button
-                      type="button"
-                      className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-stone-400 hover:text-[#cf9681] transition-colors cursor-pointer"
-                      title="Adjuntar archivo o imagen"
-                    >
-                      <span className="material-symbols-outlined text-xl">add_circle</span>
-                    </button>
-
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                      className="w-full border-none focus:outline-none focus:ring-0 font-sans text-xs sm:text-sm text-stone-700 py-2 px-1/2 bg-transparent placeholder:text-stone-400"
-                      placeholder={isDictating ? "Escuchando tu voz..." : "Escribe tu respuesta aquí..."}
-                      disabled={isDictating}
-                    />
-
-                    <div className="flex items-center gap-1.5 pr-1">
-                      {/* Speech recognition dictation trigger */}
-                      <button
-                        type="button"
-                        onClick={toggleDictate}
-                        className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full transition-all active:scale-90 cursor-pointer ${
-                          isDictating
-                            ? "bg-red-500 text-white shadow-md animate-pulse"
-                            : "text-stone-400 hover:text-[#cf9681] hover:bg-stone-50"
-                        }`}
-                        title={isDictating ? "Detener dictado por voz" : "Dictar respuesta"}
-                      >
-                        <span className="material-symbols-outlined text-[20px]">
-                          {isDictating ? "mic" : "settings_voice"}
-                        </span>
-                      </button>
-
-                      {/* Voice Note recorder trigger */}
-                      <button
-                        type="button"
-                        onClick={startVoiceRecording}
-                        className="w-9 h-9 flex-shrink-0 flex items-center justify-center text-stone-400 hover:text-[#cf9681] hover:bg-stone-50 rounded-full transition-all active:scale-90 cursor-pointer"
-                        title="Grabar nota de voz"
-                      >
-                        <span className="material-symbols-outlined text-[20px]">mic</span>
-                      </button>
-
-                      {/* Send text trigger */}
-                      <button
-                        onClick={handleSendMessage}
-                        disabled={!inputText.trim()}
-                        className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full transition-all active:scale-90 cursor-pointer ${
-                          inputText.trim() ? "bg-[#cf9681] text-white shadow-md" : "bg-stone-100 text-stone-300"
-                        }`}
-                        title="Enviar respuesta"
-                      >
-                        <span className="material-symbols-outlined text-lg">send</span>
-                      </button>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 bg-white p-2 rounded-[32px] shadow-sm border border-stone-200">
+                  <input
+                    type="text"
+                    value={inputText}
+                    onChange={(e) => {
+                      setInputText(e.target.value);
+                      if (sendError) setSendError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSendMessage();
+                    }}
+                    className="w-full border-none focus:outline-none focus:ring-0 font-sans text-xs sm:text-sm text-stone-700 py-2 px-2 bg-transparent placeholder:text-stone-400"
+                    placeholder="Escribe tu respuesta aquí..."
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!inputText.trim() || isSending}
+                    className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full transition-all active:scale-90 cursor-pointer ${
+                      inputText.trim() && !isSending
+                        ? "bg-[#cf9681] text-white shadow-md"
+                        : "bg-stone-100 text-stone-300"
+                    }`}
+                    title="Enviar respuesta"
+                  >
+                    <span className="material-symbols-outlined text-lg">send</span>
+                  </button>
+                </div>
+                {sendError && (
+                  <p className="text-[11px] text-red-600 mt-2 px-2 text-left">{sendError}</p>
                 )}
               </div>
             </div>
@@ -877,8 +502,10 @@ export function MessagingView({
         ) : (
           <div className="flex-1 flex flex-col justify-center items-center text-stone-400 bg-[#fdfcfb]">
             <span className="material-symbols-outlined text-5xl text-[#cf9681]/40 animate-bounce">forum</span>
-            <p className="mt-4 font-serif text-base font-bold text-stone-700">Canal listado listo</p>
-            <p className="text-[11px] text-stone-400 max-w-sm px-6 mt-1 text-center">Selecciona cualquier conversación de la bandeja omnicanal de Le Petit Can para gestionar citas, responder consultas y enviar notas de voz.</p>
+            <p className="mt-4 font-serif text-base font-bold text-stone-700">Bandeja omnicanal</p>
+            <p className="text-[11px] text-stone-400 max-w-sm px-6 mt-1 text-center">
+              Selecciona una conversación para ver y responder los mensajes reales de tus clientes.
+            </p>
           </div>
         )}
       </section>

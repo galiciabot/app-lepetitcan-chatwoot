@@ -2,6 +2,7 @@ import { ChatThread, ChatMessage } from "../types";
 
 export interface ChatwootConfig {
   inboxWebhookUrl: string;
+  messagesWebhookUrl: string;
   sendMessageWebhookUrl: string;
   appSecret: string;
 }
@@ -12,10 +13,14 @@ const APP_SECRET = import.meta.env.VITE_APP_SECRET || "HW9EASIns89jsd63nkjasA67"
 function getConfig(): ChatwootConfig {
   try {
     const saved = localStorage.getItem("chatwoot_n8n_config");
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.inboxWebhookUrl) return parsed;
+    }
   } catch {}
   return {
     inboxWebhookUrl: BASE + "/inbox",
+    messagesWebhookUrl: BASE + "/conversation-messages",
     sendMessageWebhookUrl: BASE + "/send-message",
     appSecret: APP_SECRET,
   };
@@ -26,6 +31,35 @@ function getHeaders() {
   return {
     "Content-Type": "application/json",
     "X-App-Secret": config.appSecret,
+  };
+}
+
+function normalizeThread(raw: any): ChatThread | null {
+  if (!raw || raw.id === undefined || raw.id === null) return null;
+  return {
+    id: String(raw.id),
+    externalId: String(raw.externalId ?? raw.id),
+    contactName: raw.contactName || raw.ownerName || "Contacto",
+    ownerName: raw.ownerName || raw.contactName,
+    channel: raw.channel || "Web",
+    avatarUrl: raw.avatarUrl || "",
+    lastMessageText: raw.lastMessageText || "",
+    lastMessageTime: raw.lastMessageTime || "",
+    unread: Boolean(raw.unread),
+    resolved: Boolean(raw.resolved),
+    messages: Array.isArray(raw.messages) ? raw.messages : [],
+  };
+}
+
+function normalizeMessage(raw: any): ChatMessage | null {
+  if (!raw || raw.id === undefined || raw.id === null) return null;
+  return {
+    id: String(raw.id),
+    externalId: String(raw.externalId ?? raw.id),
+    sender: raw.sender === "me" ? "me" : "client",
+    text: raw.text ?? "",
+    time: raw.time ?? "",
+    createdAt: raw.createdAt,
   };
 }
 
@@ -49,20 +83,19 @@ export async function listConversations(
     }
 
     const data = await res.json();
-    return data as ChatThread[];
+    if (!Array.isArray(data)) return [];
+    return data.map(normalizeThread).filter(Boolean) as ChatThread[];
   } catch (err) {
     console.warn("[chatwootService] Error fetching inbox:", err);
     return [];
   }
 }
 
-export async function listMessages(
-  conversationId?: string
-): Promise<ChatMessage[]> {
+export async function listMessages(conversationId: string): Promise<ChatMessage[]> {
   const config = getConfig();
   try {
-    const url = new URL(config.inboxWebhookUrl);
-    if (conversationId) url.searchParams.set("conversationId", conversationId);
+    const url = new URL(config.messagesWebhookUrl);
+    url.searchParams.set("conversationId", conversationId);
 
     const res = await fetch(url.toString(), {
       method: "GET",
@@ -75,8 +108,8 @@ export async function listMessages(
     }
 
     const data = await res.json();
-    if (Array.isArray(data)) return data as ChatMessage[];
-    return (data as any)?.messages || [];
+    if (!Array.isArray(data)) return [];
+    return data.map(normalizeMessage).filter(Boolean) as ChatMessage[];
   } catch (err) {
     console.warn("[chatwootService] Error fetching messages:", err);
     return [];
@@ -85,40 +118,37 @@ export async function listMessages(
 
 export async function sendMessage(
   conversationId: string,
-  payload: { text: string; isAudio?: boolean; audioDuration?: string }
+  text: string
 ): Promise<ChatMessage> {
   const config = getConfig();
-  try {
-    const res = await fetch(config.sendMessageWebhookUrl, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({
-        conversation_id: conversationId,
-        content: payload.text,
-        is_audio: payload.isAudio || false,
-        audio_duration: payload.audioDuration || null,
-      }),
-    });
+  const res = await fetch(config.sendMessageWebhookUrl, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      conversation_id: conversationId,
+      content: text,
+    }),
+  });
 
-    if (!res.ok) {
-      throw new Error(`Send message failed: ${res.status} ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    const newMsg: ChatMessage = {
-      id: `sent_${Date.now()}`,
-      sender: "me",
-      text: payload.text,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isAudio: payload.isAudio,
-      audioDuration: payload.audioDuration,
-      channel: data?.channel || "WhatsApp",
-    };
-    return newMsg;
-  } catch (err) {
-    console.error("[chatwootService] Error sending message:", err);
-    throw err;
+  if (!res.ok) {
+    throw new Error(`Send message failed: ${res.status} ${res.statusText}`);
   }
+
+  const data = await res.json();
+
+  if (data && data.status === "failed") {
+    const reason = data.content_attributes && data.content_attributes.external_error;
+    throw new Error(reason || "Chatwoot no pudo enviar el mensaje.");
+  }
+
+  return {
+    id: String(data?.id ?? `sent_${Date.now()}`),
+    externalId: data?.id ? String(data.id) : undefined,
+    sender: "me",
+    text,
+    time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    createdAt: data?.created_at,
+  };
 }
 
 export function saveChatwootConfig(config: ChatwootConfig) {

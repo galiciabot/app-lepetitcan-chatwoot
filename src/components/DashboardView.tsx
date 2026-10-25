@@ -138,7 +138,7 @@ export function DashboardView({
               Mensajería
             </h3>
             <span className="bg-warm-terracotta text-white font-sans text-xs font-semibold px-2.5 py-1 rounded-md shadow-sm">
-              2 Nuevos
+              {chatThreads.filter((c) => c.unread).length} Nuevos
             </span>
           </div>
 
@@ -152,15 +152,15 @@ export function DashboardView({
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full overflow-hidden border border-outline-variant bg-surface-container">
                       <img
-                        alt={chat.dogName}
+                        alt={chat.contactName || chat.dogName}
                         className="w-full h-full object-cover"
-                        src={chat.avatarUrl}
+                        src={chat.avatarUrl || "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=100"}
                         referrerPolicy="no-referrer"
                       />
                     </div>
                     <div>
                       <h4 className="font-sans text-base font-bold text-on-surface">
-                        {chat.dogName}
+                        {chat.contactName || chat.dogName || chat.ownerName}
                       </h4>
                       <span className="font-sans text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
                         <span className="material-symbols-outlined text-[14px]">
@@ -189,6 +189,11 @@ export function DashboardView({
                 </button>
               </div>
             ))}
+            {activeChats.length === 0 && (
+              <div className="bg-white/40 border border-dashed border-outline-variant/60 rounded-[24px] p-6 text-center">
+                <p className="font-sans text-xs text-on-surface-variant">No hay mensajes pendientes.</p>
+              </div>
+            )}
           </div>
         </section>
       </div>
