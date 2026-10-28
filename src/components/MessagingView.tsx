@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ChatThread, ChatMessage } from "../types";
+import { ChatThread, ChatMessage, ConversationStatus, ConversationPriority } from "../types";
 import * as chatwootService from "../services/chatwootService";
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -8,6 +8,34 @@ const CHANNEL_COLORS: Record<string, string> = {
   Facebook: "bg-blue-100 text-blue-700",
   Web: "bg-stone-200 text-stone-700",
   Gmail: "bg-red-100 text-red-600",
+};
+
+const STATUS_LABELS: Record<ConversationStatus, string> = {
+  open: "Abierta",
+  pending: "Pendiente",
+  resolved: "Resuelta",
+  snoozed: "Pospuesta",
+};
+
+const STATUS_STYLES: Record<ConversationStatus, string> = {
+  open: "bg-blue-50 text-blue-700 border-blue-200",
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+  resolved: "bg-green-50 text-green-700 border-green-200",
+  snoozed: "bg-violet-50 text-violet-700 border-violet-200",
+};
+
+const PRIORITY_LABELS: Record<ConversationPriority, string> = {
+  urgent: "Urgente",
+  high: "Alta",
+  medium: "Media",
+  low: "Baja",
+};
+
+const PRIORITY_DOT: Record<ConversationPriority, string> = {
+  urgent: "bg-red-500",
+  high: "bg-orange-500",
+  medium: "bg-yellow-500",
+  low: "bg-blue-400",
 };
 
 function getInitial(name?: string): string {
@@ -74,15 +102,49 @@ export function MessagingView({
   setActiveChatId,
 }: MessagingViewProps) {
   const [filter, setFilter] = useState<"Todos" | "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | string>("Todos");
+  const [statusFilter, setStatusFilter] = useState<"all" | ConversationStatus>("all");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | ConversationPriority>("all");
+  const [showUnreadOnly, setShowUnreadOnly] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showSearch, setShowSearch] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendError, setSendError] = useState<string>("");
+  const [openMenu, setOpenMenu] = useState<null | "status" | "priority" | "snooze">(null);
+  const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
+  const [customSnooze, setCustomSnooze] = useState<string>("");
+  const [cannedResponses, setCannedResponses] = useState<chatwootService.CannedResponse[]>([]);
+  const [isSendingAttachment, setIsSendingAttachment] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef = useRef<string | null>(activeChatId);
   activeChatIdRef.current = activeChatId;
+
+  // Close menus on outside click
+  useEffect(() => {
+    if (!openMenu) return;
+    const onDoc = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+        setConfirmDelete(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [openMenu]);
+
+  // Load canned responses once on mount
+  useEffect(() => {
+    let active = true;
+    chatwootService.listCannedResponses().then((items) => {
+      if (active) setCannedResponses(items);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Inbox poll: refresh conversation list every 10s, preserving loaded messages.
   useEffect(() => {
@@ -159,20 +221,29 @@ export function MessagingView({
   }, [activeChatId]);
 
   const filteredThreads = chatThreads.filter((t) => {
-    const matchesFilter = filter === "Todos" ? true : t.channel.toLowerCase() === filter.toLowerCase();
+    const matchesChannel = filter === "Todos" ? true : t.channel.toLowerCase() === filter.toLowerCase();
+    const matchesStatus = statusFilter === "all" ? true : (t.status || "open") === statusFilter;
+    const matchesPriority = priorityFilter === "all" ? true : t.priority === priorityFilter;
+    const matchesUnread = showUnreadOnly ? t.unread : true;
     const contact = t.contactName || t.ownerName || "";
     const matchesSearch =
       searchQuery.trim() === ""
         ? true
         : contact.toLowerCase().includes(searchQuery.toLowerCase()) ||
           t.lastMessageText.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
+    return matchesChannel && matchesStatus && matchesPriority && matchesUnread && matchesSearch;
   });
 
   const countByChannel = (channelName: string) => {
     if (channelName === "Todos") return chatThreads.length;
     return chatThreads.filter((t) => t.channel.toLowerCase() === channelName.toLowerCase()).length;
   };
+
+  const countByStatus = (status: ConversationStatus) => {
+    return chatThreads.filter((t) => (t.status || "open") === status).length;
+  };
+
+  const unreadCount = chatThreads.filter((t) => t.unread).length;
 
   const getThreadHashId = (id: string, channel: string) => {
     const num = id.replace(/\D/g, "") || "0";
@@ -210,11 +281,126 @@ export function MessagingView({
     }
   };
 
-  const handleToggleResolve = () => {
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || !activeThread || isSendingAttachment) return;
+    setIsSendingAttachment(true);
+    try {
+      await chatwootService.sendAttachment(activeThread.id, file);
+      const fetched = await chatwootService.listMessages(activeThread.id);
+      onUpdateThreads((prev) =>
+        prev.map((t) => (t.id === activeThread.id ? { ...t, messages: fetched } : t))
+      );
+    } catch (err) {
+      console.error("[MessagingView] Error sending attachment:", err);
+      setSendError(err instanceof Error ? err.message : "No se pudo enviar el archivo.");
+    } finally {
+      setIsSendingAttachment(false);
+    }
+  };
+
+  const insertCanned = (content: string) => {
+    setInputText(content);
+    setSendError("");
+  };
+
+  const updateStatus = async (status: ConversationStatus, snoozedUntil?: number) => {
     if (!activeThread) return;
-    onUpdateThreads((prev) =>
-      prev.map((t) => (t.id === activeThread.id ? { ...t, resolved: !t.resolved } : t))
-    );
+    setOpenMenu(null);
+    try {
+      await chatwootService.updateConversationStatus(activeThread.id, status, snoozedUntil);
+      onUpdateThreads((prev) =>
+        prev.map((t) =>
+          t.id === activeThread.id
+            ? { ...t, status, resolved: status === "resolved", snoozedUntil: snoozedUntil ? String(snoozedUntil) : null }
+            : t
+        )
+      );
+    } catch (err) {
+      console.error("[MessagingView] Error updating status:", err);
+    }
+  };
+
+  const updatePriority = async (priority: ConversationPriority | null) => {
+    if (!activeThread) return;
+    setOpenMenu(null);
+    try {
+      await chatwootService.updateConversationPriority(activeThread.id, priority);
+      onUpdateThreads((prev) =>
+        prev.map((t) => (t.id === activeThread.id ? { ...t, priority } : t))
+      );
+    } catch (err) {
+      console.error("[MessagingView] Error updating priority:", err);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!activeThread) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      window.setTimeout(() => setConfirmDelete(false), 4000);
+      return;
+    }
+    try {
+      await chatwootService.deleteConversation(activeThread.id);
+      onUpdateThreads((prev) => prev.filter((t) => t.id !== activeThread.id));
+      setActiveChatId(null);
+      setConfirmDelete(false);
+      setOpenMenu(null);
+    } catch (err) {
+      console.error("[MessagingView] Error deleting conversation:", err);
+      setConfirmDelete(false);
+    }
+  };
+
+  const snoozePresets = (): { label: string; value: number | undefined }[] => {
+    const now = new Date();
+    return [
+      { label: "Hasta la siguiente respuesta", value: undefined },
+      {
+        label: "Hasta mañana",
+        value: Math.floor(
+          (() => {
+            const d = new Date(now);
+            d.setDate(d.getDate() + 1);
+            d.setHours(9, 0, 0, 0);
+            return d.getTime();
+          })() / 1000
+        ),
+      },
+      {
+        label: "Próxima semana",
+        value: Math.floor(
+          (() => {
+            const d = new Date(now);
+            d.setDate(d.getDate() + 7);
+            return d.getTime();
+          })() / 1000
+        ),
+      },
+      {
+        label: "Próximo mes",
+        value: Math.floor(
+          (() => {
+            const d = new Date(now);
+            d.setMonth(d.getMonth() + 1);
+            return d.getTime();
+          })() / 1000
+        ),
+      },
+    ];
+  };
+
+  const applyCustomSnooze = async () => {
+    if (!customSnooze) return;
+    const ts = Math.floor(new Date(customSnooze).getTime() / 1000);
+    await updateStatus("snoozed", ts);
+    setCustomSnooze("");
   };
 
   return (
@@ -285,10 +471,51 @@ export function MessagingView({
           })}
         </div>
 
+        {/* Status + priority + unread filters */}
+        <div className="px-4 py-2.5 flex flex-wrap items-center gap-1.5 border-b border-stone-200/50 bg-white">
+          {(["open", "pending", "snoozed", "resolved"] as ConversationStatus[]).map((st) => {
+            const isSelected = statusFilter === st;
+            return (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(isSelected ? "all" : st)}
+                className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold transition-all cursor-pointer border ${
+                  isSelected ? STATUS_STYLES[st] : "bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100"
+                }`}
+              >
+                {STATUS_LABELS[st]} {countByStatus(st) > 0 ? `(${countByStatus(st)})` : ""}
+              </button>
+            );
+          })}
+
+          <button
+            onClick={() => setShowUnreadOnly(!showUnreadOnly)}
+            className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold transition-all cursor-pointer border ${
+              showUnreadOnly ? "bg-[#cf9681] text-white border-[#cf9681]" : "bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100"
+            }`}
+          >
+            No leídos {unreadCount > 0 ? `(${unreadCount})` : ""}
+          </button>
+
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value as "all" | ConversationPriority)}
+            className="ml-auto px-2 py-1 rounded-full font-sans text-[10px] font-bold border border-stone-200 bg-stone-50 text-stone-600 focus:outline-none cursor-pointer"
+          >
+            <option value="all">Prioridad: Todas</option>
+            {(Object.keys(PRIORITY_LABELS) as ConversationPriority[]).map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-3 space-y-3.5">
           {filteredThreads.map((thread) => {
             const isSelected = activeChatId === thread.id;
             const threadHash = getThreadHashId(thread.id, thread.channel);
+            const status = thread.status || "open";
 
             return (
               <div
@@ -343,10 +570,11 @@ export function MessagingView({
                     <span className="px-2 py-0.5 rounded bg-stone-100 text-[9px] font-mono font-bold text-stone-500 border border-stone-200">
                       {threadHash}
                     </span>
-                    {thread.resolved && (
-                      <span className="px-1.5 py-0.2 bg-green-50 text-green-600 border border-green-200 text-[8px] font-bold rounded">
-                        Resuelto
-                      </span>
+                    <span className={`px-1.5 py-0.2 border text-[8px] font-bold rounded ${STATUS_STYLES[status]}`}>
+                      {STATUS_LABELS[status]}
+                    </span>
+                    {thread.priority && (
+                      <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[thread.priority]}`} title={`Prioridad ${PRIORITY_LABELS[thread.priority]}`} />
                     )}
                   </div>
                 </div>
@@ -401,24 +629,134 @@ export function MessagingView({
                     {activeThread.contactName || activeThread.ownerName}
                   </h2>
                   <span className="font-sans text-[10px] text-stone-500 flex items-center gap-1 mt-1 font-semibold">
-                    Canal {activeThread.channel}
+                    Canal {activeThread.channel} • {STATUS_LABELS[activeThread.status || "open"]}
+                    {activeThread.priority && (
+                      <>
+                        {" "}• <span className={`inline-block w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[activeThread.priority]}`} /> {PRIORITY_LABELS[activeThread.priority]}
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
 
-              <button
-                onClick={handleToggleResolve}
-                className={`flex items-center gap-1 px-4 py-1.5 rounded-full font-sans text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer border ${
-                  activeThread.resolved
-                    ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
-                    : "bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80"
-                }`}
-              >
-                <span className="material-symbols-outlined text-[13px]">
-                  {activeThread.resolved ? "check_circle" : "radio_button_unchecked"}
-                </span>
-                <span>{activeThread.resolved ? "Resuelto" : "Pendiente"}</span>
-              </button>
+              {/* Conversation actions */}
+              <div className="flex items-center gap-2 relative" ref={menuRef}>
+                <button
+                  onClick={() => setOpenMenu(openMenu === "status" ? null : "status")}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full font-sans text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer border ${
+                    (activeThread.status || "open") === "resolved"
+                      ? "bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80"
+                      : `bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80`
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[13px]">label</span>
+                  <span>{STATUS_LABELS[activeThread.status || "open"]}</span>
+                </button>
+
+                <button
+                  onClick={() => setOpenMenu(openMenu === "priority" ? null : "priority")}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-full font-sans text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer border bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80"
+                >
+                  <span className="material-symbols-outlined text-[13px]">flag</span>
+                  <span>{activeThread.priority ? PRIORITY_LABELS[activeThread.priority] : "Prioridad"}</span>
+                </button>
+
+                <button
+                  onClick={handleDelete}
+                  className={`flex items-center justify-center w-9 h-9 rounded-full transition-all cursor-pointer border ${
+                    confirmDelete ? "bg-red-600 text-white border-red-600" : "bg-stone-100 text-stone-500 border-stone-200 hover:text-red-600"
+                  }`}
+                  title={confirmDelete ? "¿Confirmar borrado permanente?" : "Eliminar conversación"}
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {confirmDelete ? "warning" : "delete"}
+                  </span>
+                </button>
+
+                {openMenu === "status" && (
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl border border-stone-200 shadow-xl z-50 p-1.5">
+                    {(["open", "pending", "resolved"] as ConversationStatus[]).map((st) => (
+                      <button
+                        key={st}
+                        onClick={() => updateStatus(st)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-stone-50 text-left font-sans text-xs font-semibold text-stone-700 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[15px] text-stone-400">
+                          {st === "open" ? "chat" : st === "pending" ? "hourglass_top" : "check_circle"}
+                        </span>
+                        {STATUS_LABELS[st]}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-stone-100" />
+                    <button
+                      onClick={() => setOpenMenu("snooze")}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-stone-50 text-left font-sans text-xs font-semibold text-stone-700 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[15px] text-violet-500">snooze</span>
+                        Posponer
+                      </span>
+                      <span className="material-symbols-outlined text-[15px] text-stone-300">chevron_right</span>
+                    </button>
+                  </div>
+                )}
+
+                {openMenu === "snooze" && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl border border-stone-200 shadow-xl z-50 p-1.5">
+                    <p className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-stone-400">Posponer hasta</p>
+                    {snoozePresets().map((p) => (
+                      <button
+                        key={p.label}
+                        onClick={() => updateStatus("snoozed", p.value)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-stone-50 text-left font-sans text-xs font-semibold text-stone-700 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[15px] text-stone-400">schedule</span>
+                        {p.label}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-stone-100 px-3 pt-2">
+                      <input
+                        type="datetime-local"
+                        value={customSnooze}
+                        onChange={(e) => setCustomSnooze(e.target.value)}
+                        className="w-full text-[11px] font-sans border border-stone-200 rounded-lg px-2 py-1.5 text-stone-600 focus:outline-none focus:border-[#cf9681]"
+                      />
+                      <button
+                        onClick={applyCustomSnooze}
+                        disabled={!customSnooze}
+                        className={`mt-1.5 w-full py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                          customSnooze ? "bg-[#cf9681] text-white" : "bg-stone-100 text-stone-300"
+                        }`}
+                      >
+                        Posponer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {openMenu === "priority" && (
+                  <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-2xl border border-stone-200 shadow-xl z-50 p-1.5">
+                    {(Object.keys(PRIORITY_LABELS) as ConversationPriority[]).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => updatePriority(p)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-stone-50 text-left font-sans text-xs font-semibold text-stone-700 cursor-pointer"
+                      >
+                        <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[p]}`} />
+                        {PRIORITY_LABELS[p]}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-stone-100" />
+                    <button
+                      onClick={() => updatePriority(null)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-stone-50 text-left font-sans text-xs font-semibold text-stone-500 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[15px] text-stone-400">block</span>
+                      Sin prioridad
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 flex flex-col bg-[#fdfcfb]">
@@ -445,7 +783,36 @@ export function MessagingView({
                             : "bg-stone-100 text-stone-800 rounded-bl-[4px] shadow-3xs"
                         }`}
                       >
-                        {msg.text}
+                        {msg.stickerUrl ? (
+                          <img src={msg.stickerUrl} alt="sticker" className="max-w-[140px] rounded-none" />
+                        ) : (
+                          <>
+                            {msg.imageUrl && !msg.attachments?.length ? (
+                              <img src={msg.imageUrl} alt="" className="rounded-xl max-w-[220px] object-cover" />
+                            ) : null}
+                            {msg.text ? <span className="whitespace-pre-wrap break-words">{msg.text}</span> : null}
+                            {(msg.attachments || []).map((a, i) =>
+                              a.fileType === "image" ? (
+                                <img key={i} src={a.dataUrl} alt="" className={`rounded-xl max-w-[220px] object-cover ${msg.text ? "mt-1.5" : ""}`} />
+                              ) : a.fileType === "video" ? (
+                                <video key={i} src={a.dataUrl} controls className={`rounded-xl max-w-[220px] ${msg.text ? "mt-1.5" : ""}`} />
+                              ) : a.fileType === "audio" ? (
+                                <audio key={i} src={a.dataUrl} controls className={`mt-1.5 max-w-[220px]`} />
+                              ) : a.fileType === "file" && a.dataUrl ? (
+                                <a
+                                  key={i}
+                                  href={a.dataUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`flex items-center gap-2 underline ${isMe ? "text-white" : "text-[#cf9681]"} ${msg.text ? "mt-1.5" : ""}`}
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">download</span>
+                                  Descargar archivo
+                                </a>
+                              ) : null
+                            )}
+                          </>
+                        )}
                       </div>
                       <span
                         className={`font-sans text-[9px] text-stone-400 mt-1 block ${
@@ -466,7 +833,46 @@ export function MessagingView({
 
             <div className="p-4 bg-[#fbf9f6] border-t border-[#cf9681]/15">
               <div className="max-w-3xl mx-auto">
+                {cannedResponses.length > 0 && (
+                  <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+                    {cannedResponses.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => insertCanned(c.content)}
+                        title={c.shortCode}
+                        className="shrink-0 px-3 py-1.5 rounded-full bg-white border border-stone-200 text-[11px] font-semibold text-stone-600 hover:border-[#cf9681] hover:text-[#cf9681] transition-colors cursor-pointer"
+                      >
+                        {c.shortCode}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {activeThread.canReply === false && (
+                  <div className="mb-2 flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-3 py-2">
+                    <span className="material-symbols-outlined text-base">schedule</span>
+                    <p className="text-[11px] leading-snug">
+                      Fuera de la ventana de 24 h de {activeThread.channel}. Es posible que el mensaje no se entregue a menos que utilices una plantilla.
+                    </p>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  className="hidden"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
+                />
                 <div className="flex items-center gap-2 bg-white p-2 rounded-[32px] shadow-sm border border-stone-200">
+                  <button
+                    onClick={handleAttachClick}
+                    disabled={isSendingAttachment}
+                    className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-stone-400 hover:text-[#cf9681] hover:bg-stone-50 rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                    title="Adjuntar archivo"
+                  >
+                    <span className="material-symbols-outlined text-xl">
+                      {isSendingAttachment ? "hourglass_top" : "add_circle"}
+                    </span>
+                  </button>
                   <input
                     type="text"
                     value={inputText}

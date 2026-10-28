@@ -139,6 +139,9 @@ export interface ClientProfile {
   channels?: MetaChannelConfig;
 }
 
+export type ConversationStatus = "open" | "pending" | "resolved" | "snoozed";
+export type ConversationPriority = "urgent" | "high" | "medium" | "low";
+
 export interface ChatMessage {
   id: string;
   sender: "client" | "me";
@@ -150,6 +153,17 @@ export interface ChatMessage {
   channel?: "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | "whatsapp" | "instagram" | "facebook";
   externalId?: string;
   clientId?: string;
+  contentType?: string;
+  attachments?: ChatMessageAttachment[];
+  stickerUrl?: string;
+  imageUrl?: string;
+}
+
+export interface ChatMessageAttachment {
+  id?: string | number;
+  fileType?: string;
+  dataUrl?: string;
+  thumbUrl?: string;
 }
 
 export interface ChatThread {
@@ -164,6 +178,10 @@ export interface ChatThread {
   unread: boolean;
   messages: ChatMessage[];
   resolved: boolean;
+  status?: ConversationStatus;
+  priority?: ConversationPriority | null;
+  canReply?: boolean;
+  snoozedUntil?: string | null;
   externalId?: string;
   clientId?: string;
   platformConversationId?: string;
