@@ -5,6 +5,7 @@ export interface ChatwootConfig {
   messagesWebhookUrl: string;
   sendMessageWebhookUrl: string;
   sendAttachmentWebhookUrl: string;
+  messageDeleteWebhookUrl: string;
   statusWebhookUrl: string;
   priorityWebhookUrl: string;
   deleteWebhookUrl: string;
@@ -21,6 +22,7 @@ function defaultConfig(): ChatwootConfig {
     messagesWebhookUrl: BASE + "/conversation-messages",
     sendMessageWebhookUrl: BASE + "/send-message",
     sendAttachmentWebhookUrl: BASE + "/send-attachment",
+    messageDeleteWebhookUrl: BASE + "/message-delete",
     statusWebhookUrl: BASE + "/conversation-status",
     priorityWebhookUrl: BASE + "/conversation-priority",
     deleteWebhookUrl: BASE + "/conversation-delete",
@@ -80,6 +82,8 @@ function normalizeMessage(raw: any): ChatMessage | null {
     deleted: Boolean(raw.deleted),
     failed: Boolean(raw.failed),
     externalError: raw.externalError || undefined,
+    sourceId: raw.sourceId || null,
+    replyToId: raw.replyToId ?? null,
     contentType: raw.contentType,
     attachments: Array.isArray(raw.attachments) ? raw.attachments : [],
     stickerUrl: raw.stickerUrl || null,
@@ -142,16 +146,22 @@ export async function listMessages(conversationId: string): Promise<ChatMessage[
 
 export async function sendMessage(
   conversationId: string,
-  text: string
+  text: string,
+  inReplyToId?: string | number
 ): Promise<ChatMessage> {
   const config = getConfig();
+  const body: Record<string, unknown> = {
+    conversation_id: conversationId,
+    content: text,
+  };
+  if (inReplyToId !== undefined && inReplyToId !== null) {
+    body.in_reply_to_id = inReplyToId;
+  }
+
   const res = await fetch(config.sendMessageWebhookUrl, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({
-      conversation_id: conversationId,
-      content: text,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -213,6 +223,16 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     body: JSON.stringify({ conversation_id: conversationId }),
   });
   if (!res.ok) throw new Error(`Delete conversation failed: ${res.status} ${res.statusText}`);
+}
+
+export async function deleteMessage(conversationId: string, messageId: string): Promise<void> {
+  const config = getConfig();
+  const res = await fetch(config.messageDeleteWebhookUrl, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ conversation_id: conversationId, message_id: messageId }),
+  });
+  if (!res.ok) throw new Error(`Delete message failed: ${res.status} ${res.statusText}`);
 }
 
 export function saveChatwootConfig(config: ChatwootConfig) {

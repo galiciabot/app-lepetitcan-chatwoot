@@ -152,6 +152,11 @@ export interface ChatMessage {
   deleted?: boolean;
   failed?: boolean;
   externalError?: string;
+  sourceId?: string | null;
+  replyToId?: string | number | null;
+  pending?: boolean;
+  previewUrl?: string;
+  previewType?: "image" | "video" | "file";
   isAudio?: boolean;
   audioDuration?: string;
   channel?: "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | "whatsapp" | "instagram" | "facebook";

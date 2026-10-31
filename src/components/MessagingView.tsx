@@ -116,6 +116,8 @@ export function MessagingView({
   const [customSnooze, setCustomSnooze] = useState<string>("");
   const [cannedResponses, setCannedResponses] = useState<chatwootService.CannedResponse[]>([]);
   const [isSendingAttachment, setIsSendingAttachment] = useState<boolean>(false);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; text: string } | null>(null);
+  const [confirmMessageDeleteId, setConfirmMessageDeleteId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -185,7 +187,7 @@ export function MessagingView({
       }
     };
     load();
-    const interval = setInterval(load, 10000);
+    const interval = setInterval(load, 3000);
     return () => {
       active = false;
       clearInterval(interval);
@@ -280,6 +282,17 @@ export function MessagingView({
     return `#WB-${num}`;
   };
 
+  const resolveReplyText = (replyToId: string | number) => {
+    const parent = chatThreads
+      .find((t) => t.id === activeChatId)
+      ?.messages.find((m) => String(m.externalId ?? m.id) === String(replyToId));
+    if (!parent) return "mensaje";
+    if (parent.deleted) return "mensaje eliminado";
+    if (parent.text) return parent.text;
+    if (parent.attachments && parent.attachments.length) return "Adjunto";
+    return "mensaje";
+  };
+
   const handleSendMessage = async () => {
     const textToSend = inputText.trim();
     if (!textToSend || !activeThread || isSending) return;
@@ -287,8 +300,10 @@ export function MessagingView({
     setInputText("");
     setIsSending(true);
     setSendError("");
+    const replyRef = replyingTo;
+    setReplyingTo(null);
     try {
-      await chatwootService.sendMessage(activeThread.id, textToSend);
+      await chatwootService.sendMessage(activeThread.id, textToSend, replyRef?.id);
       const fetched = await chatwootService.listMessages(activeThread.id);
       onUpdateThreads((prev) =>
         prev.map((t) =>
@@ -300,6 +315,7 @@ export function MessagingView({
     } catch (err) {
       console.error("[MessagingView] Error sending message:", err);
       setInputText(textToSend);
+      if (replyRef) setReplyingTo(replyRef);
       setSendError(err instanceof Error ? err.message : "No se pudo enviar el mensaje.");
     } finally {
       setIsSending(false);
@@ -315,6 +331,28 @@ export function MessagingView({
     e.target.value = "";
     if (!file || !activeThread || isSendingAttachment) return;
     setIsSendingAttachment(true);
+
+    const previewType: "image" | "video" | "file" = file.type.startsWith("image")
+      ? "image"
+      : file.type.startsWith("video")
+      ? "video"
+      : "file";
+    const previewUrl = URL.createObjectURL(file);
+    const pendingMsg: ChatMessage = {
+      id: `pending_${Date.now()}`,
+      sender: "me",
+      text: "",
+      time: "",
+      pending: true,
+      previewUrl,
+      previewType,
+    };
+
+    // Insert optimistic preview bubble immediately
+    onUpdateThreads((prev) =>
+      prev.map((t) => (t.id === activeThread.id ? { ...t, messages: [...t.messages, pendingMsg] } : t))
+    );
+
     try {
       await chatwootService.sendAttachment(activeThread.id, file);
       const fetched = await chatwootService.listMessages(activeThread.id);
@@ -323,8 +361,14 @@ export function MessagingView({
       );
     } catch (err) {
       console.error("[MessagingView] Error sending attachment:", err);
+      onUpdateThreads((prev) =>
+        prev.map((t) =>
+          t.id === activeThread.id ? { ...t, messages: t.messages.filter((m) => m.id !== pendingMsg.id) } : t
+        )
+      );
       setSendError(err instanceof Error ? err.message : "No se pudo enviar el archivo.");
     } finally {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
       setIsSendingAttachment(false);
     }
   };
@@ -332,6 +376,32 @@ export function MessagingView({
   const insertCanned = (content: string) => {
     setInputText(content);
     setSendError("");
+  };
+
+  const startReply = (msg: ChatMessage) => {
+    if (msg.deleted || msg.failed) return;
+    const preview = msg.text || (msg.attachments && msg.attachments.length ? "Adjunto" : "Mensaje");
+    setReplyingTo({ id: msg.id, text: preview });
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!activeThread) return;
+    if (confirmMessageDeleteId !== msgId) {
+      setConfirmMessageDeleteId(msgId);
+      window.setTimeout(() => setConfirmMessageDeleteId((cur) => (cur === msgId ? null : cur)), 4000);
+      return;
+    }
+    try {
+      await chatwootService.deleteMessage(activeThread.id, msgId);
+      const fetched = await chatwootService.listMessages(activeThread.id);
+      onUpdateThreads((prev) =>
+        prev.map((t) => (t.id === activeThread.id ? { ...t, messages: fetched } : t))
+      );
+      setConfirmMessageDeleteId(null);
+    } catch (err) {
+      console.error("[MessagingView] Error deleting message:", err);
+      setConfirmMessageDeleteId(null);
+    }
   };
 
   const updateStatus = async (status: ConversationStatus, snoozedUntil?: number) => {
@@ -848,14 +918,44 @@ export function MessagingView({
                   );
                 }
 
+                if (msg.pending) {
+                  const isImg = msg.previewType === "image";
+                  const isVid = msg.previewType === "video";
+                  return (
+                    <div key={msg.id} className="flex gap-2 max-w-[85%] sm:max-w-[70%] self-end flex-row-reverse">
+                      <div className="flex-1">
+                        <div className="p-3 rounded-3xl bg-[#cf9681]/40 rounded-br-[4px] relative overflow-hidden">
+                          {isImg ? (
+                            <img src={msg.previewUrl} alt="" className="rounded-xl max-w-[220px] max-h-[180px] object-cover opacity-70" />
+                          ) : isVid ? (
+                            <video src={msg.previewUrl} className="rounded-xl max-w-[220px] max-h-[180px] opacity-70" muted />
+                          ) : (
+                            <span className="flex items-center gap-1.5 text-xs text-stone-700 px-1 py-2">
+                              <span className="material-symbols-outlined text-[16px]">insert_drive_file</span>
+                              Archivo
+                            </span>
+                          )}
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="px-3 py-1.5 rounded-full bg-black/50 text-white text-[11px] font-bold flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[14px] animate-spin">hourglass_top</span>
+                              Enviando…
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const isMe = msg.sender === "me";
                 const isDeleted = !!msg.deleted;
                 const isFailed = !!msg.failed && !isDeleted;
+                const canAct = !isDeleted && !isFailed;
 
                 return (
                   <div
                     key={msg.id}
-                    className={`flex gap-3 max-w-[85%] sm:max-w-[70%] ${
+                    className={`group flex gap-2 max-w-[85%] sm:max-w-[70%] ${
                       isMe ? "self-end flex-row-reverse" : "self-start text-left"
                     }`}
                   >
@@ -869,6 +969,16 @@ export function MessagingView({
                             : "bg-stone-100 text-stone-800 rounded-bl-[4px] shadow-3xs"
                         }`}
                       >
+                        {msg.replyToId && !isDeleted && (
+                          <div
+                            className={`mb-1.5 flex items-center gap-1 text-[10px] border-l-2 pl-1.5 ${
+                              isMe ? "text-white/75 border-white/40" : "text-stone-400 border-stone-300"
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-[12px]">reply</span>
+                            <span className="truncate">{resolveReplyText(msg.replyToId)}</span>
+                          </div>
+                        )}
                         {isDeleted ? (
                           <span className="italic flex items-center gap-1.5">
                             <span className="material-symbols-outlined text-[14px]">delete_outline</span>
@@ -922,6 +1032,31 @@ export function MessagingView({
                         )}
                       </span>
                     </div>
+
+                    {canAct && (
+                      <div className="flex flex-col justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => startReply(msg)}
+                          className="w-6 h-6 rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-700 flex items-center justify-center cursor-pointer"
+                          title="Responder"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">reply</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer ${
+                            confirmMessageDeleteId === msg.id
+                              ? "bg-red-600 text-white"
+                              : "bg-stone-100 text-stone-500 hover:bg-red-100 hover:text-red-600"
+                          }`}
+                          title={confirmMessageDeleteId === msg.id ? "¿Confirmar borrado?" : "Borrar mensaje"}
+                        >
+                          <span className="material-symbols-outlined text-[15px]">
+                            {confirmMessageDeleteId === msg.id ? "warning" : "delete"}
+                          </span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -945,6 +1080,22 @@ export function MessagingView({
                         {c.shortCode}
                       </button>
                     ))}
+                  </div>
+                )}
+                {replyingTo && (
+                  <div className="mb-2 flex items-center gap-2 bg-[#cf9681]/5 border border-[#cf9681]/30 text-stone-700 rounded-xl px-3 py-2">
+                    <span className="material-symbols-outlined text-[16px] text-[#cf9681]">reply</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-stone-400">Respondiendo a</p>
+                      <p className="text-[11px] font-medium truncate">{replyingTo.text}</p>
+                    </div>
+                    <button
+                      onClick={() => setReplyingTo(null)}
+                      className="text-stone-400 hover:text-stone-600 cursor-pointer"
+                      title="Cancelar respuesta"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
                   </div>
                 )}
                 {activeThread.canReply === false && (
