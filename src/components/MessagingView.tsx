@@ -102,9 +102,10 @@ export function MessagingView({
   setActiveChatId,
 }: MessagingViewProps) {
   const [filter, setFilter] = useState<"Todos" | "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | string>("Todos");
-  const [statusFilter, setStatusFilter] = useState<"all" | ConversationStatus>("all");
-  const [priorityFilter, setPriorityFilter] = useState<"all" | ConversationPriority>("all");
+  const [statusFilters, setStatusFilters] = useState<ConversationStatus[]>([]);
+  const [priorityFilters, setPriorityFilters] = useState<ConversationPriority[]>([]);
   const [showUnreadOnly, setShowUnreadOnly] = useState<boolean>(false);
+  const [showFilters, setShowFilters] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showSearch, setShowSearch] = useState<boolean>(false);
@@ -118,6 +119,7 @@ export function MessagingView({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef = useRef<string | null>(activeChatId);
   activeChatIdRef.current = activeChatId;
@@ -134,6 +136,18 @@ export function MessagingView({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [openMenu]);
+
+  // Close filter popup on outside click
+  useEffect(() => {
+    if (!showFilters) return;
+    const onDoc = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showFilters]);
 
   // Load canned responses once on mount
   useEffect(() => {
@@ -222,8 +236,8 @@ export function MessagingView({
 
   const filteredThreads = chatThreads.filter((t) => {
     const matchesChannel = filter === "Todos" ? true : t.channel.toLowerCase() === filter.toLowerCase();
-    const matchesStatus = statusFilter === "all" ? true : (t.status || "open") === statusFilter;
-    const matchesPriority = priorityFilter === "all" ? true : t.priority === priorityFilter;
+    const matchesStatus = statusFilters.length === 0 ? true : statusFilters.includes(t.status as ConversationStatus);
+    const matchesPriority = priorityFilters.length === 0 ? true : !!t.priority && priorityFilters.includes(t.priority);
     const matchesUnread = showUnreadOnly ? t.unread : true;
     const contact = t.contactName || t.ownerName || "";
     const matchesSearch =
@@ -239,11 +253,22 @@ export function MessagingView({
     return chatThreads.filter((t) => t.channel.toLowerCase() === channelName.toLowerCase()).length;
   };
 
-  const countByStatus = (status: ConversationStatus) => {
-    return chatThreads.filter((t) => (t.status || "open") === status).length;
-  };
+  const activeFilterCount =
+    statusFilters.length + priorityFilters.length + (showUnreadOnly ? 1 : 0);
 
   const unreadCount = chatThreads.filter((t) => t.unread).length;
+
+  const toggleStatusFilter = (s: ConversationStatus) => {
+    setStatusFilters((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  };
+  const togglePriorityFilter = (p: ConversationPriority) => {
+    setPriorityFilters((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  };
+  const clearFilters = () => {
+    setStatusFilters([]);
+    setPriorityFilters([]);
+    setShowUnreadOnly(false);
+  };
 
   const getThreadHashId = (id: string, channel: string) => {
     const num = id.replace(/\D/g, "") || "0";
@@ -471,44 +496,90 @@ export function MessagingView({
           })}
         </div>
 
-        {/* Status + priority + unread filters */}
-        <div className="px-4 py-2.5 flex flex-wrap items-center gap-1.5 border-b border-stone-200/50 bg-white">
-          {(["open", "pending", "snoozed", "resolved"] as ConversationStatus[]).map((st) => {
-            const isSelected = statusFilter === st;
-            return (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(isSelected ? "all" : st)}
-                className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold transition-all cursor-pointer border ${
-                  isSelected ? STATUS_STYLES[st] : "bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100"
-                }`}
-              >
-                {STATUS_LABELS[st]} {countByStatus(st) > 0 ? `(${countByStatus(st)})` : ""}
-              </button>
-            );
-          })}
-
+        {/* Filter button + popup */}
+        <div className="px-4 py-2 border-b border-stone-200/50 bg-white relative" ref={filterRef}>
           <button
-            onClick={() => setShowUnreadOnly(!showUnreadOnly)}
-            className={`px-2.5 py-1 rounded-full font-sans text-[10px] font-bold transition-all cursor-pointer border ${
-              showUnreadOnly ? "bg-[#cf9681] text-white border-[#cf9681]" : "bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-sans text-xs font-bold transition-all cursor-pointer border ${
+              activeFilterCount > 0
+                ? "bg-[#cf9681] text-white border-[#cf9681]"
+                : "bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200/60"
             }`}
           >
-            No leídos {unreadCount > 0 ? `(${unreadCount})` : ""}
+            <span className="material-symbols-outlined text-[16px]">filter_list</span>
+            Filtrar
+            {activeFilterCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-white text-[#cf9681] flex items-center justify-center text-[9px] font-black">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
 
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value as "all" | ConversationPriority)}
-            className="ml-auto px-2 py-1 rounded-full font-sans text-[10px] font-bold border border-stone-200 bg-stone-50 text-stone-600 focus:outline-none cursor-pointer"
-          >
-            <option value="all">Prioridad: Todas</option>
-            {(Object.keys(PRIORITY_LABELS) as ConversationPriority[]).map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABELS[p]}
-              </option>
-            ))}
-          </select>
+          {showFilters && (
+            <div className="absolute left-4 top-full mt-2 w-64 bg-white rounded-2xl border border-stone-200 shadow-xl z-50 p-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-stone-400 mb-2">Estado</p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {(["open", "pending", "snoozed", "resolved"] as ConversationStatus[]).map((st) => {
+                  const active = statusFilters.includes(st);
+                  return (
+                    <button
+                      key={st}
+                      onClick={() => toggleStatusFilter(st)}
+                      className={`px-2.5 py-1 rounded-full font-sans text-[11px] font-bold border transition-all cursor-pointer ${
+                        active ? "bg-stone-700 text-white border-stone-700" : "bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100"
+                      }`}
+                    >
+                      {STATUS_LABELS[st]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-[9px] font-black uppercase tracking-widest text-stone-400 mb-2">Urgencia</p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {(Object.keys(PRIORITY_LABELS) as ConversationPriority[]).map((p) => {
+                  const active = priorityFilters.includes(p);
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => togglePriorityFilter(p)}
+                      className={`px-2.5 py-1 rounded-full font-sans text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        active ? "bg-stone-700 text-white border-stone-700" : "bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[p]}`} />
+                      {PRIORITY_LABELS[p]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label
+                className={`flex items-center gap-2 cursor-pointer select-none rounded-xl border px-3 py-2 ${
+                  showUnreadOnly ? "bg-[#cf9681]/5 border-[#cf9681]/40" : "border-stone-200"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={showUnreadOnly}
+                  onChange={(e) => setShowUnreadOnly(e.target.checked)}
+                  className="accent-[#cf9681]"
+                />
+                <span className="font-sans text-[11px] font-semibold text-stone-700">
+                  Solo no leídos {unreadCount > 0 ? `(${unreadCount})` : ""}
+                </span>
+              </label>
+
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 w-full py-1.5 rounded-lg text-[11px] font-bold text-stone-500 hover:bg-stone-100 cursor-pointer"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-3.5">
@@ -650,7 +721,7 @@ export function MessagingView({
                   }`}
                 >
                   <span className="material-symbols-outlined text-[13px]">label</span>
-                  <span>{STATUS_LABELS[activeThread.status || "open"]}</span>
+                  <span>Estado: {STATUS_LABELS[activeThread.status || "open"]}</span>
                 </button>
 
                 <button
@@ -658,7 +729,7 @@ export function MessagingView({
                   className="flex items-center gap-1 px-3 py-1.5 rounded-full font-sans text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer border bg-stone-100 text-stone-600 border-stone-300/60 hover:bg-stone-200/80"
                 >
                   <span className="material-symbols-outlined text-[13px]">flag</span>
-                  <span>{activeThread.priority ? PRIORITY_LABELS[activeThread.priority] : "Prioridad"}</span>
+                  <span>Urgencia: {activeThread.priority ? PRIORITY_LABELS[activeThread.priority] : "Ninguna"}</span>
                 </button>
 
                 <button
@@ -767,7 +838,20 @@ export function MessagingView({
               </div>
 
               {activeThread.messages.map((msg) => {
+                if (msg.sender === "system") {
+                  return (
+                    <div key={msg.id} className="flex justify-center my-1">
+                      <span className="max-w-[85%] px-3 py-1.5 rounded-full bg-stone-100/80 text-stone-400 text-[10px] font-semibold text-center border border-stone-200/50">
+                        {msg.text}
+                      </span>
+                    </div>
+                  );
+                }
+
                 const isMe = msg.sender === "me";
+                const isDeleted = !!msg.deleted;
+                const isFailed = !!msg.failed && !isDeleted;
+
                 return (
                   <div
                     key={msg.id}
@@ -778,12 +862,19 @@ export function MessagingView({
                     <div className="flex-1">
                       <div
                         className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed text-left ${
-                          isMe
+                          isDeleted
+                            ? "bg-stone-50 text-stone-400 border border-dashed border-stone-300 rounded-br-[4px]"
+                            : isMe
                             ? "bg-[#cf9681] text-white rounded-br-[4px] shadow-xs"
                             : "bg-stone-100 text-stone-800 rounded-bl-[4px] shadow-3xs"
                         }`}
                       >
-                        {msg.stickerUrl ? (
+                        {isDeleted ? (
+                          <span className="italic flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[14px]">delete_outline</span>
+                            {msg.text || "Este mensaje se ha eliminado"}
+                          </span>
+                        ) : msg.stickerUrl ? (
                           <img src={msg.stickerUrl} alt="sticker" className="max-w-[140px] rounded-none" />
                         ) : (
                           <>
@@ -820,6 +911,15 @@ export function MessagingView({
                         }`}
                       >
                         {msg.time}
+                        {isFailed && (
+                          <span
+                            className="ml-1.5 inline-flex items-center gap-0.5 text-red-500 font-bold"
+                            title={msg.externalError || "El envío falló"}
+                          >
+                            <span className="material-symbols-outlined text-[11px]">error</span>
+                            No enviado
+                          </span>
+                        )}
                       </span>
                     </div>
                   </div>

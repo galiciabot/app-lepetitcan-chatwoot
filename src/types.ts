@@ -144,10 +144,14 @@ export type ConversationPriority = "urgent" | "high" | "medium" | "low";
 
 export interface ChatMessage {
   id: string;
-  sender: "client" | "me";
+  sender: "client" | "me" | "system";
   text: string;
   time: string;
   createdAt?: number;
+  messageType?: number;
+  deleted?: boolean;
+  failed?: boolean;
+  externalError?: string;
   isAudio?: boolean;
   audioDuration?: string;
   channel?: "WhatsApp" | "Instagram" | "Facebook" | "Web" | "Gmail" | "whatsapp" | "instagram" | "facebook";
